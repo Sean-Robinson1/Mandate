@@ -35,7 +35,7 @@ class Run(Base):
     request_text: Mapped[str] = mapped_column(Text)
     mandate_id: Mapped[str] = mapped_column(String(80))
     buyer_org: Mapped[str] = mapped_column(String(200))
-    # ORDERED | NEEDS_HUMAN | REFUSED | NEEDS_CLARIFICATION | APPROVED | DECLINED
+    # ORDERED | NEEDS_HUMAN | REFUSED | NEEDS_CLARIFICATION | APPROVED | DECLINED | FAILED
     status: Mapped[str] = mapped_column(String(30), index=True)
     total_net: Mapped[float] = mapped_column(Float, default=0.0)
     intent_json: Mapped[str] = mapped_column(Text, default="")

@@ -105,7 +105,14 @@ def run(text: str, mandate: Mandate, session: Session, api: ValioAPI, llm: LLMCl
         return RunResult(trace_id=trace_id, status="NEEDS_CLARIFICATION", receipt=f"I need to ask: {e}")
     log("intent.parsed", intent.model_dump(mode="json"))
 
-    candidates, rejected = catalog.find_candidates(intent, api)
+    try:
+        candidates, rejected = catalog.find_candidates(intent, api)
+    except Exception as e:                      # API down, rate-limited, or an unexpected response shape
+        log("lookup.failed", {"error": f"{type(e).__name__}: {e}"[:500]}, actor="gateway")
+        run_row.status, run_row.intent_json = "FAILED", intent.model_dump_json()
+        run_row.receipt = "The price and availability lookup at Valio Aimo failed, so the agent stopped."
+        session.commit()
+        return RunResult(trace_id=trace_id, status="FAILED", intent=intent, receipt=run_row.receipt)
     log("candidates.considered", {
         "priced": [{"product_id": c.product_id, "name": c.name, "eur_per_unit": c.comparison_price,
                     "available_units": c.available_units, "available_date": str(c.available_date)}

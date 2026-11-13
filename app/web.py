@@ -38,6 +38,7 @@ STATUS = {
     "NEEDS_CLARIFICATION": ("Needs clarification", "warn"),
     "REFUSED": ("Refused", "bad"),
     "DECLINED": ("Declined", "bad"),
+    "FAILED": ("Lookup failed", "bad"),
 }
 
 RULE_LABELS = {
@@ -75,6 +76,7 @@ EVENT_LABELS = {
     "approval.decided": "Approver decided",
     "order.placed": "Order placed",
     "order.refused": "Order refused",
+    "lookup.failed": "Valio Aimo lookup failed",
 }
 
 ALLERGEN_NAMES = {"AN": "tree nuts", "AP": "peanuts", "AM": "milk", "AE": "egg", "AF": "fish",
@@ -163,6 +165,8 @@ def event_summary(e: dict) -> str:
         return f"{p.get('order_id')}, {eur(p.get('total_net'))}"
     if kind == "order.refused":
         return ", ".join(p.get("rules", []))
+    if kind == "lookup.failed":
+        return p.get("error", "")
     if kind == "clarification.requested":
         return p.get("question", "")
     if kind == "intent.parsed":

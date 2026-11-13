@@ -30,9 +30,9 @@ class ProductPrice(BaseModel):
 
 
 class ScheduleLine(BaseModel):
-    availableAmount: float
-    availableDate: date
-    salesUnit: str
+    availableAmount: float = 0.0
+    availableDate: date | None = None      # absent when nothing is available
+    salesUnit: str | None = None
     salesBlock: bool = False
 
 

@@ -19,6 +19,8 @@
     <p>The mandate does not allow this, and an approver cannot override it. Nothing has been ordered.</p>
   {% elif run.status == "DECLINED" %}
     <p>{{ approval.approver }} declined this on {{ approval.decided_at|when }}. Nothing has been ordered.</p>
+  {% elif run.status == "FAILED" %}
+    <p>{{ run.receipt }} Nothing has been ordered. Try again in a moment; the error is in the audit trail below.</p>
   {% else %}
     <p>{{ run.receipt }}</p>
     <p class="muted">Nothing has been ordered. Rephrase the request with a quantity, a product and a delivery date.</p>
