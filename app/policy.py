@@ -256,6 +256,26 @@ def band_price_premium(intent, plan, mandate, ctx):
                    **details)
 
 
+def preference_cost(intent, plan, mandate, ctx):
+    """Honouring a soft preference is the buyer's wish, but if it is expensive a human should confirm it."""
+    cheapest = plan.cheapest_overall_price
+    if not cheapest or cheapest <= 0 or plan.covered_quantity <= 0 or not intent.preferences:
+        return None
+    avg = plan.total_net / plan.covered_quantity
+    premium = _pct((avg / cheapest - 1) * 100)
+    if premium <= mandate.bands.price_premium_auto_pct:
+        return None
+    unit = plan.unit.value
+    extra = plan.total_net - cheapest * plan.covered_quantity
+    wanted = ", ".join(sorted(intent.preferences))
+    return _reason("preference.cost", NEEDS_HUMAN,
+                   f"Keeping the stated preference ({wanted}) costs {avg:.2f} EUR/{unit}, {premium:.0f}% more than "
+                   f"the cheapest option that meets the requirements ({cheapest:.2f} EUR/{unit}). That is about "
+                   f"{_eur(extra)} extra; the agent may accept up to {mandate.bands.price_premium_auto_pct:g}% alone.",
+                   avg_price=round(avg, 6), cheapest_overall_price=cheapest, premium_pct=premium,
+                   extra_eur=round(extra, 2))
+
+
 def band_overage(intent, plan, mandate, ctx):
     requested, covered = plan.requested_quantity, plan.covered_quantity
     if covered <= requested:
@@ -417,6 +437,7 @@ RULES: list[tuple[str, Rule]] = [
     ("spend.per_week", spend_per_week),
     ("spend.intent_budget", spend_intent_budget),
     ("band.price_premium", band_price_premium),
+    ("preference.cost", preference_cost),
     ("band.overage", band_overage),
     ("band.shortfall", band_shortfall),
     ("band.delivery", band_delivery),

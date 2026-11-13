@@ -11,6 +11,7 @@ from app.audit import verify_chain
 from app.db import SessionLocal, init_db
 from app.llm import get_llm
 from app.mandates import DEMO_MANDATES
+from app.trust import sign_mandate
 from app.valio_client import ValioClient
 
 DEFAULT_REQUEST = ("I need 1,000 litres of lactose-free milk by Monday. "
@@ -28,7 +29,7 @@ def main(argv=None) -> int:
 
     init_db()
     with SessionLocal() as session:
-        result = agent.run(args.request, DEMO_MANDATES[args.mandate], session, ValioClient(),
+        result = agent.run(args.request, sign_mandate(DEMO_MANDATES[args.mandate]), session, ValioClient(),
                            llm=None if args.no_llm else get_llm())
         chain = verify_chain(session)
     print(f"=== {result.status} (trace {result.trace_id}) ===")

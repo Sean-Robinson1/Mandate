@@ -22,7 +22,7 @@ class IntentError(ValueError):
 PRODUCT_TYPES: dict[str, dict] = {
     "milk": {
         "terms": ["milk"], "aliases": ["milk", "maito", "maitoa"], "category": "10400",
-        "exclude": ["coffee", "café", "cafe", "sour", "latte", "cocoa", "chocolate", "portion",
+        "exclude": ["coffee", "caf", "kahvi", "sour", "latte", "cocoa", "chocolate", "portion",
                     "vanilla", "powder", "curdled", "fermented"],
     },
     "cream": {"terms": ["cream"], "aliases": ["cream", "kerma"], "category": "104",
@@ -167,8 +167,10 @@ Fields:
 - excluded_allergens: subset of {allergens} (GS1 codes: AM milk, AE egg, AN tree nuts, AP peanuts, AF fish, AW gluten cereals, AY soy)
 - preferences: object with optional "brand" (string) and "organic" (true)
 - max_budget_eur: number or null
-- ambiguities: list of short strings, things you had to guess
-- confidence: 0-1
+- ambiguities: short strings, ONLY for a guess that could change what gets ordered (missing deadline, unclear
+  product, unclear quantity). Routine readings such as resolving a weekday to a date are not ambiguities.
+  Use an empty list when the request is clear.
+- confidence: 0-1. Use 1.0 when product, quantity, unit and deadline are all explicit.
 
 <request>
 {text}

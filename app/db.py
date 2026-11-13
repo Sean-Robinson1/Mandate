@@ -25,6 +25,27 @@ class Order(Base):
     receipt: Mapped[str] = mapped_column(Text, default="")
 
 
+class Run(Base):
+    """One buyer request and everything the agent did with it. Feeds the UI and the approval queue."""
+
+    __tablename__ = "runs"
+
+    trace_id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    created_at: Mapped[str] = mapped_column(String(40), index=True)
+    request_text: Mapped[str] = mapped_column(Text)
+    mandate_id: Mapped[str] = mapped_column(String(80))
+    buyer_org: Mapped[str] = mapped_column(String(200))
+    # ORDERED | NEEDS_HUMAN | REFUSED | NEEDS_CLARIFICATION | APPROVED | DECLINED
+    status: Mapped[str] = mapped_column(String(30), index=True)
+    total_net: Mapped[float] = mapped_column(Float, default=0.0)
+    intent_json: Mapped[str] = mapped_column(Text, default="")
+    plan_json: Mapped[str] = mapped_column(Text, default="")
+    policy_json: Mapped[str] = mapped_column(Text, default="")
+    receipt: Mapped[str] = mapped_column(Text, default="")
+    order_id: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    approval_json: Mapped[str] = mapped_column(Text, default="")   # signed approval record, if any
+
+
 def make_engine(url: str | None = None):
     url = url or config.DATABASE_URL
     if url.startswith("postgres://"):                           # Aiven-style URL

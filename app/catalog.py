@@ -27,7 +27,15 @@ def product_by_id(product_id: str) -> dict | None:
 
 def display_name(p: dict) -> str:
     name = p["names"].get("en") or p["names"].get("fi") or p["id"]
-    return " ".join(name.replace("®", "").replace("\u0099", "").split())
+    # The dataset has mis-encoded characters (C1 controls, U+FFFD); drop them so names render cleanly.
+    keep = (ch for ch in name if ord(ch) not in (0xAE, 0xFFFD) and not 0x80 <= ord(ch) <= 0x9F)
+    return " ".join("".join(keep).split())
+
+
+def _claim_words(claim: str) -> str:
+    if claim.startswith("FREE_FROM_"):
+        return claim[10:].replace("_", " ").lower() + "-free"
+    return claim.replace("_", " ").lower()
 
 
 def _searchable(p: dict) -> str:
@@ -49,7 +57,7 @@ def search(intent: IntentSpec, index: list[dict] | None = None) -> tuple[list[di
         missing = [c for c in intent.required_claims if c not in p["claims"]]
         if missing:
             rejected.append(Rejection(product_id=p["id"], name=display_name(p),
-                                      reason=f"does not carry required claim {', '.join(missing)}"))
+                                      reason="is not " + " or ".join(_claim_words(c) for c in missing)))
             continue
         hit = [a for a in intent.excluded_allergens if a in p["contains"]]
         if hit:

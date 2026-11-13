@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Trusted Trade{% endblock %}</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<div class="shell">
+  <aside class="side">
+    <a class="brand" href="/">Trusted Trade</a>
+    <div class="brand-sub">Purchasing agent for Valio Aimo</div>
+    <nav class="nav" aria-label="Main">
+      <a href="/" {% if active == "new" %}aria-current="page"{% endif %}>New request</a>
+      <a href="/approvals" {% if active == "approvals" %}aria-current="page"{% endif %}>Approvals
+        {% if pending %}<span class="count">{{ pending }}</span>{% endif %}</a>
+      <a href="/activity" {% if active == "activity" %}aria-current="page"{% endif %}>Activity</a>
+      <a href="/mandates" {% if active == "mandates" %}aria-current="page"{% endif %}>Mandates</a>
+      <a href="/audit" {% if active == "audit" %}aria-current="page"{% endif %}>Audit log</a>
+    </nav>
+    <div class="side-foot">
+      <a href="/audit">
+        <strong><span class="dot {{ 'ok' if chain.ok else 'bad' }}"></span>{{ "Audit log intact" if chain.ok else "Audit log altered" }}</strong>
+        {{ chain.events_checked }} events, hash chain {{ "verified" if chain.ok else "broken at #" ~ chain.first_bad_seq }}
+      </a>
+    </div>
+  </aside>
+  <main class="main"><div class="wrap">{% block content %}{% endblock %}</div></main>
+</div>
+{% block script %}{% endblock %}
+</body>
+</html>

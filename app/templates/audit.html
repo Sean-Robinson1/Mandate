@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Audit log · Trusted Trade{% endblock %}
+{% block content %}
+<h1>Audit log</h1>
+<p class="lede">Every step the agent takes is appended here. Each entry stores the hash of the one before it,
+  so an edit or a deletion in the middle breaks the chain.</p>
+
+<div class="verdict {{ 'ok' if chain.ok else 'bad' }}">
+  <p class="verdict-title">{{ "Chain verified" if chain.ok else "Chain broken at entry #" ~ chain.first_bad_seq }}</p>
+  {% if chain.ok %}
+  <p>All {{ chain.events_checked }} entries were re-hashed just now and match.
+    {% if chain.head_hash %}Latest hash <span class="mono">{{ chain.head_hash[:24] }}…</span>{% endif %}</p>
+  {% else %}<p>{{ chain.problem }}</p>{% endif %}
+  <p class="small muted">Machine-readable: <a href="/audit/verify">/audit/verify</a></p>
+</div>
+
+<section>
+  <div class="section-head"><h2>Entries</h2><span class="muted">Newest first</span></div>
+  {% if events %}
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th class="num">#</th><th>Time</th><th>Event</th><th>Actor</th><th>Request</th><th>Hash</th></tr></thead>
+    <tbody>
+    {% for e in events %}
+      <tr>
+        <td class="num muted">{{ e.seq }}</td>
+        <td class="small nowrap">{{ e.ts|when("%d %b %H:%M:%S") }}</td>
+        <td>{{ e.label }}</td>
+        <td class="small muted">{{ e.actor }}</td>
+        <td><a class="mono" href="/requests/{{ e.trace_id }}">{{ e.trace_id }}</a></td>
+        <td class="mono muted" title="{{ e.hash }}">{{ e.hash[:12] }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}<p class="empty">No entries yet.</p>{% endif %}
+</section>
+{% endblock %}

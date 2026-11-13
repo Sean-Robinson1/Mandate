@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Mandates · Trusted Trade{% endblock %}
+{% block content %}
+<h1>Mandates</h1>
+<p class="lede">A mandate is what a buyer organisation authorises its agent to do, signed by the organisation.
+  Each decision falls into one of three zones.</p>
+
+{% for it in items %}
+{% set m = it.m %}{% set b = m.bands %}{% set h = m.hard_constraints %}
+<section>
+  <div class="section-head"><h2>{{ m.buyer_org }}</h2>
+    <span class="muted">Valid {{ m.valid_from|string|when("%d %b %Y") }} to {{ m.valid_until|string|when("%d %b %Y") }}</span></div>
+  <div class="table-scroll">
+  <table class="bands">
+    <thead><tr><th></th><th class="zone ok">Agent decides</th><th class="zone warn">Human approves</th><th class="zone bad">Refused</th></tr></thead>
+    <tbody>
+      <tr><td>Order value</td>
+        <td class="zone ok">Up to {{ m.limits.per_order_auto_eur|eur }}</td>
+        <td class="zone warn">Up to {{ m.limits.per_order_max_eur|eur }}</td>
+        <td class="zone bad">Above {{ m.limits.per_order_max_eur|eur }}</td></tr>
+      <tr><td>Spend per week</td>
+        <td class="zone ok">Up to {{ m.limits.per_week_auto_eur|eur }}</td>
+        <td class="zone warn">Above {{ m.limits.per_week_auto_eur|eur }}</td>
+        <td class="zone bad">–</td></tr>
+      <tr><td>Price above cheapest option</td>
+        <td class="zone ok">Up to {{ b.price_premium_auto_pct|qty }}%</td>
+        <td class="zone warn">Up to {{ b.price_premium_max_pct|qty }}%</td>
+        <td class="zone bad">Above {{ b.price_premium_max_pct|qty }}%</td></tr>
+      <tr><td>Ordering more than asked</td>
+        <td class="zone ok">Up to {{ b.overage_auto_pct|qty }}%</td>
+        <td class="zone warn">Up to {{ b.overage_max_pct|qty }}%</td>
+        <td class="zone bad">Above {{ b.overage_max_pct|qty }}%</td></tr>
+      <tr><td>Covering less than asked</td>
+        <td class="zone ok">Never</td>
+        <td class="zone warn">Short by up to {{ b.shortfall_max_pct|qty }}%</td>
+        <td class="zone bad">Short by more</td></tr>
+      <tr><td>Delivery</td>
+        <td class="zone ok">By the deadline</td>
+        <td class="zone warn">{{ "Up to " ~ b.late_days_max ~ " day(s) late" if b.late_days_max else "–" }}</td>
+        <td class="zone bad">{{ "Later than that" if b.late_days_max else "Any later" }}</td></tr>
+      <tr><td>Changing a preference</td>
+        <td class="zone ok">{{ m.substitution.relaxable_preferences|join(", ")|replace("_", " ")|capitalize or "None" }}</td>
+        <td class="zone warn">Any other preference</td>
+        <td class="zone bad">–</td></tr>
+      <tr><td>Allergens</td>
+        <td class="zone ok">–</td><td class="zone warn">–</td>
+        <td class="zone bad">{% if h.excluded_allergens %}{% for a in h.excluded_allergens %}{{ ALLERGEN_NAMES.get(a, a)|capitalize }}{{ ", " if not loop.last }}{% endfor %}{{ ", including traces" if h.exclude_may_contain }}{{ "; products without allergen data" if h.require_allergen_data }}{% else %}Whatever the request excludes{% endif %}</td></tr>
+      <tr><td>Unsure about the request</td>
+        <td class="zone ok">{{ (b.min_intent_confidence * 100)|round|int }}% confident or more</td>
+        <td class="zone warn">Less confident</td>
+        <td class="zone bad">–</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="keyline">
+    <span><span class="dot {{ 'ok' if it.valid else 'bad' }}"></span>Signature {{ "verified" if it.valid else "INVALID" }}</span>
+    <span class="mono muted">{{ m.mandate_id }}</span>
+    <span class="muted">Agent</span><span class="mono">{{ m.agent_id }}</span>
+    <span class="muted">Ed25519 key</span><span class="mono">{{ it.public_key }}</span>
+  </div>
+</section>
+{% endfor %}
+{% endblock %}

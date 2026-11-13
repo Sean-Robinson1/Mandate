@@ -18,6 +18,16 @@ cp .env.example .env                                         # then fill in VALI
 Options: `--mandate hotel|school`, `--no-llm` (rule-based parser only).
 Tests: `.venv/Scripts/python -m pytest -q`
 
+### Web console
+
+```bash
+.venv/Scripts/python -m uvicorn app.web:app --port 8000
+```
+
+Open http://127.0.0.1:8000. Submit a request, review the plan and the mandate checks, approve or decline
+anything waiting for sign-off, and inspect the audit log. `GET /audit/verify` re-hashes the chain.
+Set `LLM_PROVIDER=none` in `.env` to skip the LLM (faster; rule-based parser only).
+
 ## How it works
 
 ```mermaid
@@ -46,6 +56,8 @@ flowchart LR
 ## Status
 
 - **M1 done:** request to auto-placed order from one command, against the live mock API.
-- Next: approval queue and UI (M2), exceptions (M3), signed offers (M4), receipts in the UI (M5).
+- **M2 done:** signed mandates, full policy engine, approval queue and web console with signed approval records.
+- Next: allergen-safe scenario and recorded API responses for a deterministic demo (M3), signed offers (M4),
+  OpenAPI gateway and MCP (M6).
 
 See `docs/api-notes.md` for the API and `ASSUMPTIONS.md` for what is mocked (notably: ordering).

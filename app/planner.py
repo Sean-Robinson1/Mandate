@@ -93,7 +93,13 @@ def build_plan(intent: IntentSpec, candidates: list[Candidate], now: datetime,
     covered = round(sum(l.measure for l in lines), 2)
     total_net = round(sum(l.line_total for l in lines), 2)
     total_gross = round(sum(l.sales_units * price_of[l.product_id].unit_price_with_tax for l in lines), 2)
-    reference = min((c.comparison_price for c in eligible), default=None)
+    # The price band measures what splitting or substituting costs, so it compares like with like:
+    # the cheapest orderable product that honours the same preferences. What the preference itself
+    # costs is reported separately (cheapest_overall) and checked by its own policy rule.
+    best_tier = min((len(relaxed_preferences(c, intent)) for c in eligible), default=0)
+    reference = min((c.comparison_price for c in eligible
+                     if len(relaxed_preferences(c, intent)) == best_tier), default=None)
+    cheapest_overall = min((c.comparison_price for c in eligible), default=None)
     unit = intent.unit.value
 
     notes: list[str] = []
@@ -102,13 +108,17 @@ def build_plan(intent: IntentSpec, candidates: list[Candidate], now: datetime,
         notes.append(f"{line.name} only had {math.floor(c.available_units)} {c.sales_unit} "
                      f"({line.measure:g} {unit}) available by {intent.deadline:%A}, "
                      f"so the rest comes from {lines[i + 1].name}.")
-    if lines and reference is not None:
-        cheaper = sorted(((c, why) for c, why in late_or_closed if c.comparison_price < reference),
+    if lines and cheapest_overall is not None:
+        cheaper = sorted(((c, why) for c, why in late_or_closed if c.comparison_price < cheapest_overall),
                          key=lambda x: x[0].comparison_price)
         if cheaper:
             c, why = cheaper[0]
             notes.append(f"A cheaper option exists but cannot be used: {c.name} at "
                          f"{c.comparison_price:.2f} EUR/{unit} ({why}).")
+    if lines and cheapest_overall is not None and reference is not None and cheapest_overall < reference:
+        c = min(eligible, key=lambda c: (c.comparison_price, c.product_id))
+        notes.append(f"Without the stated preference, {c.name} would cost {c.comparison_price:.2f} EUR/{unit} "
+                     f"instead of {reference:.2f} EUR/{unit}.")
     if any(not l.quantity_confirmed for l in lines):
         notes.append("Some lines are supplier-delivered: Valio Aimo does not confirm exact stock for them.")
 
@@ -123,5 +133,5 @@ def build_plan(intent: IntentSpec, candidates: list[Candidate], now: datetime,
         lines=lines, unit=intent.unit, requested_quantity=intent.quantity, covered_quantity=covered,
         shortfall=round(max(0.0, intent.quantity - covered), 2), total_net=total_net,
         total_with_tax=total_gross, latest_delivery=max((l.delivery_date for l in lines), default=None),
-        reference_price=reference, rejected=rejected, notes=notes,
+        reference_price=reference, cheapest_overall_price=cheapest_overall, rejected=rejected, notes=notes,
     )

@@ -118,7 +118,8 @@ class Plan(BaseModel):
     total_net: float
     total_with_tax: float
     latest_delivery: date | None = None
-    reference_price: float | None = None          # cheapest eligible EUR per L/kg seen, in or out of stock
+    reference_price: float | None = None          # cheapest orderable EUR per L/kg that honours the stated preferences
+    cheapest_overall_price: float | None = None   # cheapest orderable EUR per L/kg ignoring soft preferences
     rejected: list[Rejection] = Field(default_factory=list)
     notes: list[str] = Field(default_factory=list)
 

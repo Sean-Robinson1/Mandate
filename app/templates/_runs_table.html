@@ -1,0 +1,20 @@
+{% if rows %}
+<div class="table-scroll">
+<table>
+  <thead><tr><th>Request</th><th>Buyer</th><th class="num">Total</th><th>Status</th><th>When</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr class="link-row" onclick="location.href='/requests/{{ r.trace_id }}'">
+      <td><a class="row-link" href="/requests/{{ r.trace_id }}">{{ r.request_text|truncate(72) }}</a></td>
+      <td class="small">{{ r.buyer_org|truncate(28) }}</td>
+      <td class="num">{{ r.total_net|eur if r.total_net else "–" }}</td>
+      <td><span class="status {{ STATUS[r.status][1] }}"><span class="dot"></span>{{ STATUS[r.status][0] }}</span></td>
+      <td class="small muted nowrap">{{ r.created_at|when("%d %b, %H:%M") }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<p class="empty">{{ empty_text or "Nothing here yet." }}</p>
+{% endif %}
