@@ -1,0 +1,14 @@
+# secrets
+.env
+PROBLEM_DESCRIPTION.md
+# python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+# local data
+*.db
+*.sqlite3
+keys/
+# 87 MB raw portal dataset: re-download with scripts/fetch_portal_data.py
+docs/portal/valio_aimo_junction26_product_data.json

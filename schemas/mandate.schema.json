@@ -1,0 +1,221 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/trusted-trade/mandate.schema.json",
+  "title": "Trusted Trade purchasing mandate",
+  "description": "What a buyer organisation authorises its purchasing agent to do: spend limits, tolerance bands, hard constraints and substitution rules. Signed by the organisation (Ed25519 over the canonical JSON without `signature` and `signer_key_id`).",
+  "$defs": {
+    "Bands": {
+      "description": "Green up to *_auto, amber up to *_max, red beyond.",
+      "properties": {
+        "price_premium_auto_pct": {
+          "default": 5.0,
+          "title": "Price Premium Auto Pct",
+          "type": "number"
+        },
+        "price_premium_max_pct": {
+          "default": 20.0,
+          "title": "Price Premium Max Pct",
+          "type": "number"
+        },
+        "overage_auto_pct": {
+          "default": 3.0,
+          "title": "Overage Auto Pct",
+          "type": "number"
+        },
+        "overage_max_pct": {
+          "default": 15.0,
+          "title": "Overage Max Pct",
+          "type": "number"
+        },
+        "shortfall_max_pct": {
+          "default": 50.0,
+          "title": "Shortfall Max Pct",
+          "type": "number"
+        },
+        "late_days_max": {
+          "default": 0,
+          "title": "Late Days Max",
+          "type": "integer"
+        },
+        "min_intent_confidence": {
+          "default": 0.8,
+          "title": "Min Intent Confidence",
+          "type": "number"
+        },
+        "min_reliability_auto": {
+          "default": 0.9,
+          "title": "Min Reliability Auto",
+          "type": "number"
+        }
+      },
+      "title": "Bands",
+      "type": "object"
+    },
+    "HardConstraints": {
+      "description": "Never relaxable by the agent or by an approver.",
+      "properties": {
+        "required_claims": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Required Claims",
+          "type": "array"
+        },
+        "excluded_allergens": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Excluded Allergens",
+          "type": "array"
+        },
+        "exclude_may_contain": {
+          "default": false,
+          "title": "Exclude May Contain",
+          "type": "boolean"
+        },
+        "require_allergen_data": {
+          "default": false,
+          "title": "Require Allergen Data",
+          "type": "boolean"
+        }
+      },
+      "title": "HardConstraints",
+      "type": "object"
+    },
+    "SpendLimits": {
+      "properties": {
+        "per_order_auto_eur": {
+          "title": "Per Order Auto Eur",
+          "type": "number"
+        },
+        "per_order_max_eur": {
+          "title": "Per Order Max Eur",
+          "type": "number"
+        },
+        "per_week_auto_eur": {
+          "title": "Per Week Auto Eur",
+          "type": "number"
+        }
+      },
+      "required": [
+        "per_order_auto_eur",
+        "per_order_max_eur",
+        "per_week_auto_eur"
+      ],
+      "title": "SpendLimits",
+      "type": "object"
+    },
+    "SubstitutionPolicy": {
+      "properties": {
+        "relaxable_preferences": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Relaxable Preferences",
+          "type": "array"
+        },
+        "allow_split_orders": {
+          "default": true,
+          "title": "Allow Split Orders",
+          "type": "boolean"
+        }
+      },
+      "title": "SubstitutionPolicy",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "mandate_id": {
+      "title": "Mandate Id",
+      "type": "string"
+    },
+    "buyer_org": {
+      "title": "Buyer Org",
+      "type": "string"
+    },
+    "agent_id": {
+      "title": "Agent Id",
+      "type": "string"
+    },
+    "valid_from": {
+      "format": "date",
+      "title": "Valid From",
+      "type": "string"
+    },
+    "valid_until": {
+      "format": "date",
+      "title": "Valid Until",
+      "type": "string"
+    },
+    "currency": {
+      "default": "EUR",
+      "title": "Currency",
+      "type": "string"
+    },
+    "limits": {
+      "$ref": "#/$defs/SpendLimits"
+    },
+    "bands": {
+      "$ref": "#/$defs/Bands"
+    },
+    "allowed_categories": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Allowed Categories"
+    },
+    "hard_constraints": {
+      "$ref": "#/$defs/HardConstraints"
+    },
+    "substitution": {
+      "$ref": "#/$defs/SubstitutionPolicy"
+    },
+    "approver": {
+      "default": "purchasing-manager",
+      "title": "Approver",
+      "type": "string"
+    },
+    "signature": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Signature"
+    },
+    "signer_key_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Signer Key Id"
+    }
+  },
+  "required": [
+    "mandate_id",
+    "buyer_org",
+    "agent_id",
+    "valid_from",
+    "valid_until",
+    "limits"
+  ],
+  "type": "object"
+}

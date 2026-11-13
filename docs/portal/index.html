@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
+<title>Valio Aimo Junction 2026 Challenge</title>
+<link rel="stylesheet" href="/static/theme.css"></head>
+<body>
+<div class="top-ribbon" aria-hidden="true"></div>
+<header class="site-header"><div class="container">
+  <a class="brand" href="/" aria-label="Junction 2026 home"><img src="/static/logo.svg" alt="Valio Aimo"></a>
+</div></header>
+<main><section class="section"><div class="container">
+  <h1>Valio Aimo Junction 2026 Challenge</h1>
+
+  <h2>General</h2>
+  <div class="panel">
+  <p>Challenge material consists of:</p>
+  <ol>
+    <li>Pricing API that can be queried to find prices for products</li>
+    <li>Availability API that can be queried to determine if a product is available for requested delivery date</li>
+    <li>Product data file that has general product information and product codes that can be used with API calls and other files</li>
+    <li>JSON schema to explain product data file</li>
+    <li>Delivery reliability data file</li>
+    <li>Carbon footprint data file</li>
+  </ol>
+  </div>
+  
+  <h2>Data</h2>
+  <div class="panel">
+  <h3>Product data</h3>
+  <p>Product data usually originates from maker of the product and quantity / quality of data varies: for example factory-made meals with a GTIN code will typically contain precise nutritional and allergen information but fruits and vegetables are often lacking such information.</p>
+  <p class="warning">While inspired by real world, this dataset does not contain fully accurate product information and it must not be used for anything outside of this challenge.</p>
+  <ul class="links">
+    <li><a href="/files/32825daf25fcd6023c3b43028cf0b191/valio_aimo_junction26_product_data.json" download><strong>Download product data</strong><span>Full product data set as JSON</span></a></li>
+    <li><a href="/files/008f9a50ba9a6538d2e5bdf29d592af8/valio_aimo_junction26_product_data_schema.json" download><strong>Download product data schema</strong><span>JSON Schema describing the product data file</span></a></li>
+  </ul>
+  </div>
+  <div class="panel">
+  <h3>Delivery reliability</h3>
+  <p>This file tells how reliably a product has historically been delivered compared to ordered quantities. It is given as a value between 0 and 1, where 1 means that all orders were delivered as ordered.</p>
+  <p>Products are identified with the same product codes as in the product data. Not every product has a value.</p>
+  <ul class="links">
+    <li><a href="/files/fc0b960c5db8a49fb3b85e02a7f70b78/valio_aimo_junction26_delivery_reliability.csv" download><strong>Download delivery reliability</strong><span>Delivery reliability per product as CSV</span></a></li>
+  </ul>
+  </div>
+  <div class="panel">
+  <h3>Carbon footprint</h3>
+  <p>Estimated average carbon footprint per kilogram of product, in the column <code>AVG kg CO2-eq/kg</code>. The value is an average for the product group the product belongs to, not a measurement of the individual product.</p>
+  <p>Products are identified with the same product codes as in the product data. Not every product has a value.</p>
+  <ul class="links">
+    <li><a href="/files/6d3b5d4ee6de9b5153b70beb27812efe/valio_aimo_junction26_carbon_footprint.csv" download><strong>Download carbon footprint</strong><span>Carbon footprint per product as CSV</span></a></li>
+  </ul>
+  </div>
+
+  <h2>API documentation</h2>
+  <div class="panel">
+  <p>The challenge includes mock apis for pricing and availability. There are three ways of accessing API documentation:</p>
+  <ul class="links">
+    <li><a href="/docs"><strong>Swagger UI</strong><span>Explore OpenAPI documentation in Swagger UI</span></a></li>
+    <li><a href="/redoc"><strong>Redoc</strong><span>Explore OpenAPI documentation in ReDoc</span></a></li>
+    <li><a href="/openapi.json"><strong>OpenAPI JSON</strong><span>Download OpenAPI documentation as JSON</span></a></li>
+  </ul>
+  </div>
+
+  <h2>Authentication</h2>
+  <div class="panel">
+  <p>Everything under <code>/api</code> requires an <code>X-API-Key</code> header. API key can be found on the Junction platform</p>
+  <pre>curl -H "X-API-Key: &lt;api key from platform&gt;" https://junction26.valioaimo.fi/api/ping</pre>
+  </div>
+</div></section>
+</main>
+<footer class="site-footer"><div class="container">
+  <nav class="footer-nav"><form method="post" action="/logout"><button class="link-button" type="submit">Logout</button></form></nav>
+</div></footer>
+</body></html>
