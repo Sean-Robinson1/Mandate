@@ -1,6 +1,8 @@
-"""Database setup. SQLite locally, PostgreSQL by changing DATABASE_URL only."""
-from datetime import datetime, timezone
+"""Database setup. SQLite locally, PostgreSQL by changing DATABASE_URL only.
 
+Timestamps on runs and orders are ISO-8601 in Helsinki time (the buyer's business clock, used for weekly
+spend). Audit events are stamped in UTC.
+"""
 from sqlalchemy import Float, String, Text, create_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
@@ -15,12 +17,12 @@ class Order(Base):
     __tablename__ = "orders"
 
     order_id: Mapped[str] = mapped_column(String(40), primary_key=True)
-    trace_id: Mapped[str] = mapped_column(String(40), index=True)
-    mandate_id: Mapped[str] = mapped_column(String(80))
+    trace_id: Mapped[str] = mapped_column(String(40), index=True, unique=True)   # at most one order per request
+    mandate_id: Mapped[str] = mapped_column(String(80), index=True)
     buyer_org: Mapped[str] = mapped_column(String(200))
     status: Mapped[str] = mapped_column(String(30))            # PLACED | CANCELLED
     total_net: Mapped[float] = mapped_column(Float)
-    created_at: Mapped[str] = mapped_column(String(40))        # ISO-8601 UTC
+    created_at: Mapped[str] = mapped_column(String(40))        # ISO-8601, Helsinki time
     lines_json: Mapped[str] = mapped_column(Text)
     receipt: Mapped[str] = mapped_column(Text, default="")
 
@@ -31,7 +33,7 @@ class Run(Base):
     __tablename__ = "runs"
 
     trace_id: Mapped[str] = mapped_column(String(40), primary_key=True)
-    created_at: Mapped[str] = mapped_column(String(40), index=True)
+    created_at: Mapped[str] = mapped_column(String(40), index=True)   # ISO-8601, Helsinki time
     request_text: Mapped[str] = mapped_column(Text)
     mandate_id: Mapped[str] = mapped_column(String(80))
     buyer_org: Mapped[str] = mapped_column(String(200))
@@ -50,7 +52,11 @@ def make_engine(url: str | None = None):
     url = url or config.DATABASE_URL
     if url.startswith("postgres://"):                           # Aiven-style URL
         url = url.replace("postgres://", "postgresql://", 1)
-    return create_engine(url, future=True)
+    connect_args = {}
+    if url.startswith("sqlite"):
+        # Writers queue on SQLite's database lock; wait for it rather than failing with "database is locked".
+        connect_args = {"timeout": 30, "check_same_thread": False}
+    return create_engine(url, connect_args=connect_args)
 
 
 engine = make_engine()
@@ -58,12 +64,6 @@ SessionLocal = sessionmaker(engine, expire_on_commit=False)
 
 
 def init_db(bind=None):
-    try:
-        import app.audit  # noqa: F401  registers the audit table
-    except ImportError:
-        pass
+    import app.audit  # noqa: F401  registers the audit tables on Base.metadata
+
     Base.metadata.create_all(bind or engine)
-
-
-def utcnow_iso() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")

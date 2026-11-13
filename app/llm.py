@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import shutil
 import subprocess
 import tempfile
@@ -84,11 +83,13 @@ def get_llm(provider: str | None = None) -> LLMClient | None:
 
 
 def extract_json(text: str) -> dict:
-    """Pull the first JSON object out of a model reply (tolerates code fences and chatter)."""
-    match = re.search(r"\{.*\}", text, re.DOTALL)
-    if not match:
-        raise LLMError("no JSON object in LLM reply")
-    try:
-        return json.loads(match.group(0))
-    except json.JSONDecodeError as e:
-        raise LLMError(f"invalid JSON from LLM: {e}") from e
+    """Pull the first JSON object out of a model reply (tolerates code fences and chatter around it)."""
+    decoder = json.JSONDecoder()
+    for start in (i for i, ch in enumerate(text) if ch == "{"):
+        try:
+            value, _ = decoder.raw_decode(text, start)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(value, dict):
+            return value
+    raise LLMError("no JSON object in LLM reply")

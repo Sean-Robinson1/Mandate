@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.audit import (
     GENESIS_HASH,
     AuditEvent,
+    AuditHead,
     Base,
     append_event,
     event_to_dict,
@@ -151,6 +152,29 @@ def test_deleting_the_first_row_is_detected(session):
     result = verify_chain(session)
     assert not result.ok
     assert result.first_bad_seq == 2
+
+
+def test_deleting_the_last_rows_is_detected(session):
+    """Without the head record, a log cut short still verifies as a valid shorter chain."""
+    fill(session)
+    session.execute(delete(AuditEvent).where(AuditEvent.seq >= 4))
+    session.commit()
+    result = verify_chain(session)
+    assert not result.ok
+    assert result.events_checked == 3 and result.first_bad_seq == 4
+    assert "missing from the end" in result.problem
+
+
+def test_existing_log_without_a_head_is_adopted(session):
+    """A database written before the head row existed: the first new append starts from its last event."""
+    events = fill(session)
+    session.execute(delete(AuditHead))
+    session.commit()
+    assert verify_chain(session).ok
+    new = append_event(session, trace_id="t", actor="gateway", event_type="x", payload={})
+    session.commit()
+    assert new.seq == 6 and new.prev_hash == events[-1].hash
+    assert verify_chain(session).ok
 
 
 def test_events_for_trace_filters_and_orders(session):

@@ -1,10 +1,10 @@
 """Demo mandates, canonical serialisation for signing, and the mandate JSON Schema."""
 from __future__ import annotations
 
-import json
 from datetime import date
 
 from app.models import Bands, HardConstraints, Mandate, SpendLimits, SubstitutionPolicy
+from app.signing import canonical_bytes
 
 _VALID_FROM = date(2026, 11, 1)
 _VALID_UNTIL = date(2026, 12, 31)
@@ -41,10 +41,8 @@ DEMO_MANDATES: dict[str, Mandate] = {
 
 
 def canonical_json(mandate: Mandate) -> bytes:
-    """Deterministic bytes to sign: everything except the signature fields."""
-    payload = mandate.model_dump(mode="json", exclude={"signature", "signer_key_id"})
-    text = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-    return text.encode("utf-8")
+    """Deterministic bytes to sign: everything except the signature fields (same encoding as app.signing)."""
+    return canonical_bytes(mandate.model_dump(mode="json", exclude={"signature", "signer_key_id"}))
 
 
 def mandate_json_schema() -> dict:

@@ -1,9 +1,10 @@
 """Thin typed client for the Valio Aimo mock API (price + availability).
 
-The mock has no order endpoint; ordering is mocked locally in app/orders.py (see ASSUMPTIONS.md).
+The mock has no order endpoint; ordering is mocked locally in app.agent.place_order (see ASSUMPTIONS.md).
 """
 from __future__ import annotations
 
+import time
 from datetime import date, datetime
 from typing import Protocol
 
@@ -54,6 +55,8 @@ class ValioAPI(Protocol):
 
 class ValioClient:
     MAX_PRODUCTS = 1000
+    ATTEMPTS = 3
+    RETRYABLE = (429, 502, 503, 504)
 
     def __init__(self, base_url: str | None = None, api_key: str | None = None, customer: str = "123"):
         self.customer = customer
@@ -68,17 +71,30 @@ class ValioClient:
             raise ValueError(f"need 1-{self.MAX_PRODUCTS} product ids, got {len(product_ids)}")
         body = {"customer": self.customer, "requestedDate": requested.isoformat(), "products": product_ids}
         last: Exception | None = None
-        for _ in range(3):                                      # undisclosed rate limits: small retry
+        for attempt in range(self.ATTEMPTS):                    # undisclosed rate limits: retry with backoff
+            if attempt:
+                time.sleep(self._delay(attempt, last))
             try:
                 r = self._http.post(path, json=body)
-                if r.status_code in (429, 502, 503):
-                    last = httpx.HTTPStatusError("retryable", request=r.request, response=r)
-                    continue
-                r.raise_for_status()
-                return r.json()
             except httpx.TransportError as e:
                 last = e
-        raise RuntimeError(f"Valio API {path} failed: {last}")
+                continue
+            if r.status_code in self.RETRYABLE:
+                last = httpx.HTTPStatusError(f"HTTP {r.status_code}", request=r.request, response=r)
+                continue
+            r.raise_for_status()
+            return r.json()
+        raise RuntimeError(f"Valio API {path} failed after {self.ATTEMPTS} attempts: {last}")
+
+    @staticmethod
+    def _delay(attempt: int, last: Exception | None) -> float:
+        """Honour Retry-After (seconds) when the server sends it, else exponential backoff; at most 5 s."""
+        if isinstance(last, httpx.HTTPStatusError):
+            try:
+                return min(5.0, max(0.0, float(last.response.headers.get("Retry-After", ""))))
+            except ValueError:
+                pass
+        return min(5.0, 0.5 * 2 ** (attempt - 1))
 
     def ping(self) -> bool:
         return self._http.get("/api/ping").json().get("status") == "ok"

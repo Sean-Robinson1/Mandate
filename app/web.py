@@ -74,10 +74,13 @@ EVENT_LABELS = {
     "policy.evaluated": "Checked against the mandate",
     "approval.requested": "Sent for approval",
     "approval.decided": "Approver decided",
+    "approval.reopened": "Sent back for review: something changed",
     "order.placed": "Order placed",
     "order.refused": "Order refused",
     "lookup.failed": "Valio Aimo lookup failed",
 }
+
+STATUS_WORD = {"AUTO_APPROVE": "Within authority", "NEEDS_HUMAN": "Needs a human", "REJECT": "Not allowed"}
 
 ALLERGEN_NAMES = {"AN": "tree nuts", "AP": "peanuts", "AM": "milk", "AE": "egg", "AF": "fish",
                   "AW": "gluten cereals", "AY": "soy", "AS": "sesame", "AC": "crustaceans"}
@@ -165,6 +168,8 @@ def event_summary(e: dict) -> str:
         return f"{p.get('order_id')}, {eur(p.get('total_net'))}"
     if kind == "order.refused":
         return ", ".join(p.get("rules", []))
+    if kind == "approval.reopened":
+        return f"New since it was sent: {', '.join(p.get('rules', []))}"
     if kind == "lookup.failed":
         return p.get("error", "")
     if kind == "clarification.requested":
@@ -172,9 +177,6 @@ def event_summary(e: dict) -> str:
     if kind == "intent.parsed":
         return f"{qty(p.get('quantity'))} {p.get('unit')} by {p.get('deadline')}, parser {p.get('parser')}"
     return ""
-
-
-STATUS_WORD = {"AUTO_APPROVE": "Within authority", "NEEDS_HUMAN": "Needs a human", "REJECT": "Not allowed"}
 
 
 # ---------------------------------------------------------------- pages
@@ -211,20 +213,26 @@ def run_detail(request: Request, trace_id: str):
     fired, ok = checks_for(policy_data) if policy_data else ([], [])
     approval = json.loads(row.approval_json) if row.approval_json else None
     mandate = MANDATE_BY_ID.get(row.mandate_id)
+    reopened = row.status == "NEEDS_HUMAN" and bool(events) and events[-1]["event_type"] == "approval.reopened"
     return page(request, "run.html", run=row, intent=intent, plan=plan, fired=fired, ok=ok, events=events,
-                approval=approval, mandate=mandate,
+                approval=approval, mandate=mandate, reopened=reopened,
                 approval_valid=bool(approval and mandate and trust.verify_approval(approval, mandate.approver)),
                 active="approvals" if row.status == "NEEDS_HUMAN" else "activity")
 
 
 @app.post("/requests/{trace_id}/decision", include_in_schema=False)
 def decision(trace_id: str, action: str = Form(...), note: str = Form("")):
+    if action not in ("approve", "decline"):
+        raise HTTPException(400, "action must be approve or decline")
     with SessionLocal() as s:
         row = s.get(Run, trace_id)
         if row is None:
             raise HTTPException(404, "request not found")
+        mandate = MANDATE_BY_ID.get(row.mandate_id)
+        if mandate is None:
+            raise HTTPException(409, f"mandate {row.mandate_id} is not loaded")
         try:
-            agent.decide(s, trace_id, MANDATE_BY_ID[row.mandate_id], approve=(action == "approve"), note=note.strip())
+            agent.decide(s, trace_id, mandate, approve=(action == "approve"), note=note.strip()[:500])
         except ValueError as e:
             raise HTTPException(409, str(e))
     return RedirectResponse(f"/requests/{trace_id}", status_code=303)

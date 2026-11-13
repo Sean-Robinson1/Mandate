@@ -57,6 +57,9 @@ flowchart LR
 
 - **M1 done:** request to auto-placed order from one command, against the live mock API.
 - **M2 done:** signed mandates, full policy engine, approval queue and web console with signed approval records.
+- **Hardening:** safe under concurrent requests and approvals (one locked transaction per decision, never held
+  across network or LLM calls); re-checks at sign-off send changed requests back for review; stricter request
+  parsing and LLM cross-checks; end-to-end tests against a fake API.
 - Next: allergen-safe scenario and recorded API responses for a deterministic demo (M3), signed offers (M4),
   OpenAPI gateway and MCP (M6).
 

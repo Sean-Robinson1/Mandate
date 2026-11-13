@@ -13,6 +13,9 @@
     <p>Every rule in the mandate passed, so the agent placed order <span class="mono">{{ run.order_id }}</span> for {{ run.total_net|eur }} without asking anyone.</p>
   {% elif run.status == "APPROVED" %}
     <p>{{ approval.approver }} signed this off on {{ approval.decided_at|when }}. Order <span class="mono">{{ run.order_id }}</span> placed for {{ run.total_net|eur }}.</p>
+  {% elif run.status == "NEEDS_HUMAN" and reopened %}
+    <p>Your approval was not applied: something changed after this was sent for approval, so the reasons below
+       include new ones. Nothing has been ordered. Review them and decide again.</p>
   {% elif run.status == "NEEDS_HUMAN" %}
     <p>The agent found a plan but is not allowed to place it alone. Nothing has been ordered.</p>
   {% elif run.status == "REFUSED" %}
@@ -49,7 +52,7 @@
 {% if intent %}
 <section>
   <div class="section-head"><h2>What the agent understood</h2>
-    <span class="muted">{{ "Read by rules" if intent.parser == "rules" else "Read by " ~ intent.parser.split(":")[1] ~ ", cross-checked by rules" }} · {{ (intent.confidence * 100)|round|int }}% confident</span></div>
+    <span class="muted">{% if intent.parser == "rules" %}Read by rules{% else %}Read by {{ intent.parser.split(":")[1] }}{{ ", cross-checked by rules" if intent.parser.endswith("+rules") else ", not confirmed by rules" }}{% endif %} ·{{ (intent.confidence * 100)|round|int }}% confident</span></div>
   <dl class="facts">
     <div><dt>Product</dt><dd>{{ intent.product_terms|join(" ")|capitalize }}</dd></div>
     <div><dt>Quantity</dt><dd>{{ intent.quantity|qty }} {{ intent.unit }}</dd></div>

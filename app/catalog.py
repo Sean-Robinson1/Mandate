@@ -6,6 +6,7 @@ as the API documentation requires.
 from __future__ import annotations
 
 import json
+import re
 from functools import lru_cache
 
 from app import config
@@ -13,7 +14,10 @@ from app.models import Candidate, IntentSpec, Rejection, Unit
 from app.valio_client import ValioAPI
 
 UNLIMITED = 999_999          # Terminal products report this; some Stock products report 9999999999
-MAX_SHORTLIST = 60
+# The API takes up to 1000 ids but asks clients not to poll the whole catalog. 200 covers every product type
+# in the lexicon (milk: 73 matches); anything beyond is reported as not priced, never dropped silently.
+MAX_SHORTLIST = 200
+NOT_PRICED = "not priced:"
 
 
 @lru_cache(maxsize=1)
@@ -42,17 +46,27 @@ def _searchable(p: dict) -> str:
     return " ".join(p["names"].values()).lower()
 
 
+def _term_pattern(term: str) -> re.Pattern:
+    # Match at the start of a word: "milk" finds "milk" and "milks", not "buttermilk".
+    return re.compile(r"(?<!\w)" + re.escape(term.lower()))
+
+
 def search(intent: IntentSpec, index: list[dict] | None = None) -> tuple[list[dict], list[Rejection]]:
-    """Static shortlist. Returns (matches, near-misses rejected on a stated requirement)."""
+    """Static shortlist. Returns (matches, products rejected with a reason).
+
+    Product terms must start a word; exclude terms match anywhere, so exclusion errs on the side of caution.
+    """
     index = index if index is not None else load_index()
+    wanted = [_term_pattern(t) for t in intent.product_terms]
+    excluded = [t.lower() for t in intent.exclude_terms]
     matches, rejected = [], []
     for p in index:
         if intent.category and not p["category"].startswith(intent.category):
             continue
         text = _searchable(p)
-        if not all(t.lower() in text for t in intent.product_terms):
+        if not all(w.search(text) for w in wanted):
             continue
-        if any(t.lower() in text for t in intent.exclude_terms):
+        if any(t in text for t in excluded):
             continue
         missing = [c for c in intent.required_claims if c not in p["claims"]]
         if missing:
@@ -65,6 +79,9 @@ def search(intent: IntentSpec, index: list[dict] | None = None) -> tuple[list[di
                                       reason=f"contains excluded allergen {', '.join(hit)}"))
             continue
         matches.append(p)
+    for p in matches[MAX_SHORTLIST:]:
+        rejected.append(Rejection(product_id=p["id"], name=display_name(p),
+                                  reason=f"{NOT_PRICED} more than {MAX_SHORTLIST} products matched"))
     return matches[:MAX_SHORTLIST], rejected
 
 

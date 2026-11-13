@@ -150,7 +150,7 @@ def test_llm_and_rules_agreeing_keeps_confidence():
     reply = ('{"product_type":"milk","quantity":1000,"unit":"L","deadline":"2026-11-16",'
              '"required_claims":["FREE_FROM_LACTOSE"],"confidence":1.0,"ambiguities":[]}')
     i = parse_intent(REQUEST, TODAY, FakeLLM(reply))
-    assert i.parser == "llm:fake" and i.confidence == 1.0
+    assert i.parser == "llm:fake+rules" and i.confidence == 1.0
 
 
 def test_llm_disagreeing_with_rules_drops_confidence_so_a_human_is_asked():
