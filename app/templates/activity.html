@@ -2,8 +2,8 @@
 {% block title %}Activity · Trusted Trade{% endblock %}
 {% block content %}
 <h1>Activity</h1>
-<p class="lede">Every request the agent has handled, whatever the outcome.</p>
-<section style="margin-top:28px">
+<p class="lede">Every request the agent has handled for {{ my_org.buyer_org }}, whatever the outcome.</p>
+<section class="first">
   {% with empty_text = "No requests yet." %}{% include "_runs_table.html" %}{% endwith %}
 </section>
 {% endblock %}

@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import logging
 import threading
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -16,6 +17,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 import settings as config
 from app import agent, keys, kitchen, policy, rules
@@ -136,7 +138,7 @@ def when(iso: str | None, fmt: str = "%d %b %Y, %H:%M") -> str:
     dt = datetime.fromisoformat(iso)
     if dt.tzinfo:
         dt = dt.astimezone(config.HELSINKI)
-    return dt.strftime(fmt).lstrip("0")
+    return dt.strftime(fmt.replace("%d", str(dt.day))).lstrip("0")
 
 
 def day(iso: str | None) -> str:
@@ -170,13 +172,45 @@ def is_manager(person) -> bool:
     return person.id == MANDATES[person.org_key].approver
 
 
-def page(request: Request, name: str, **ctx):
+_chain_cache: dict = {"at": 0.0, "key": None, "result": None}
+CHAIN_CACHE_SECONDS = 10
+
+
+def cached_chain(s):
+    """The sidebar's chain check. Re-hashing the whole log on every page grows with the log, so the result is reused
+    for a few seconds while the log has not grown. The audit page always re-hashes from scratch."""
+    key = s.scalar(select(func.max(AuditEvent.seq)))
+    now = time.monotonic()
+    if _chain_cache["key"] != key or now - _chain_cache["at"] > CHAIN_CACHE_SECONDS:
+        _chain_cache.update(at=now, key=key, result=verify_chain(s))
+    return _chain_cache["result"]
+
+
+def my_mandate_id(me) -> str:
+    return MANDATES[me.org_key].mandate_id
+
+
+def page(request: Request, name: str, status_code: int = 200, fresh_chain: bool = False, **ctx):
     me = current_person(request)
     with SessionLocal() as s:
-        pending = s.scalar(select(func.count()).select_from(Run).where(Run.status == "NEEDS_HUMAN"))
-        chain = verify_chain(s)
+        pending = s.scalar(select(func.count()).select_from(Run)
+                           .where(Run.status == "NEEDS_HUMAN", Run.mandate_id == my_mandate_id(me)))
+        chain = verify_chain(s) if fresh_chain else cached_chain(s)
     return templates.TemplateResponse(request, name, {"pending": pending, "chain": chain, "me": me,
-                                                      "my_org": MANDATES[me.org_key], **ctx})
+                                                      "my_org": MANDATES[me.org_key], **ctx},
+                                      status_code=status_code)
+
+
+@app.exception_handler(StarletteHTTPException)
+async def http_error(request: Request, exc: StarletteHTTPException):
+    """Pages get a readable error page; the JSON endpoints the pages call keep their JSON."""
+    if "text/html" not in request.headers.get("accept", ""):
+        return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+    titles = {403: "Not allowed", 404: "Not found", 409: "Already changed"}
+    detail = str(exc.detail) if exc.detail else ""
+    return page(request, "error.html", status_code=exc.status_code,
+                title=titles.get(exc.status_code, "Something went wrong"),
+                detail=detail[:1].upper() + detail[1:])
 
 
 @app.post("/session", include_in_schema=False)
@@ -256,12 +290,14 @@ def _sheet_context(me) -> dict:
 
 
 @app.get("/", include_in_schema=False)
-def home(request: Request):
+def home(request: Request, text: str = "", delivered: int | None = None, started: int | None = None):
     me = current_person(request)
     with SessionLocal() as s:
-        recent = s.scalars(select(Run).where(Run.mandate_id == MANDATES[me.org_key].mandate_id)
+        recent = s.scalars(select(Run).where(Run.mandate_id == my_mandate_id(me))
                            .order_by(Run.created_at.desc()).limit(6)).all()
-    return page(request, "home.html", examples=EXAMPLES, recent=recent, active="supplies", **_sheet_context(me))
+    summary = {"delivered": delivered, "started": started} if delivered is not None else None
+    return page(request, "home.html", examples=EXAMPLES, recent=recent, active="supplies", prefill=text[:1000],
+                summary=summary, **_sheet_context(me))
 
 
 @app.get("/supplies/sheet", include_in_schema=False)
@@ -290,13 +326,20 @@ async def edit_supply(request: Request, supply_id: int):
     return JSONResponse({"ok": True})
 
 
+def _delivered_count(s, mandate_id: str) -> int:
+    return s.scalar(select(func.count()).select_from(Order).join(Run, Run.trace_id == Order.trace_id)
+                    .where(Order.status == "DELIVERED", Run.mandate_id == mandate_id)) or 0
+
+
 @app.post("/kitchen/next-day", include_in_schema=False)
-def next_day():
+def next_day(request: Request):
+    me = current_person(request)
     with SessionLocal() as s:
+        before = _delivered_count(s, my_mandate_id(me))
         kitchen.next_day(s)
-    for org_key in MANDATES:
-        start_restocks(org_key)
-    return RedirectResponse("/", status_code=303)
+        delivered = _delivered_count(s, my_mandate_id(me)) - before
+    started = {org_key: len(start_restocks(org_key)) for org_key in MANDATES}
+    return RedirectResponse(f"/?delivered={delivered}&started={started[me.org_key]}", status_code=303)
 
 
 def start_restocks(org_key: str) -> list[str]:
@@ -401,17 +444,22 @@ def decision(request: Request, trace_id: str, action: str = Form(...), note: str
 
 @app.get("/approvals", include_in_schema=False)
 def approvals(request: Request):
+    me = current_person(request)
     with SessionLocal() as s:
-        rows = s.scalars(select(Run).where(Run.status == "NEEDS_HUMAN").order_by(Run.created_at.desc())).all()
+        rows = s.scalars(select(Run).where(Run.status == "NEEDS_HUMAN", Run.mandate_id == my_mandate_id(me))
+                         .order_by(Run.created_at.desc())).all()
     reasons = {r.trace_id: [x["message"] for x in json.loads(r.policy_json)["reasons"]] for r in rows}
     approvers = {r.trace_id: MANDATE_BY_ID[r.mandate_id].approver_name for r in rows if r.mandate_id in MANDATE_BY_ID}
-    return page(request, "approvals.html", rows=rows, reasons=reasons, approvers=approvers, active="approvals")
+    return page(request, "approvals.html", rows=rows, reasons=reasons, approvers=approvers, active="approvals",
+                can_approve=is_manager(me))
 
 
 @app.get("/activity", include_in_schema=False)
 def activity(request: Request):
+    me = current_person(request)
     with SessionLocal() as s:
-        rows = s.scalars(select(Run).order_by(Run.created_at.desc()).limit(200)).all()
+        rows = s.scalars(select(Run).where(Run.mandate_id == my_mandate_id(me))
+                         .order_by(Run.created_at.desc()).limit(200)).all()
     return page(request, "activity.html", rows=rows, active="activity")
 
 
@@ -435,8 +483,7 @@ def rules_page(request: Request, signed: int | None = None):
                   "valio_version": _held_by_valio_aimo(m.mandate_id), "suggestions": rules.suggestions(s, m),
                   "can_edit": me.id == m.approver}
                  for k, m in sorted(MANDATES.items(), key=lambda kv: kv[0] != me.org_key)]
-    return page(request, "mandates.html", items=items, signed=signed, active="rules", show=rules.show,
-                fields={f.path: f for f in rules.FIELDS})
+    return page(request, "mandates.html", items=items, signed=signed, active="rules")
 
 
 def _editable(request: Request, key: str):
@@ -510,7 +557,7 @@ def audit(request: Request):
                   s.scalars(select(AuditEvent).order_by(AuditEvent.seq.desc()).limit(300))]
     for e in events:
         e["label"] = EVENT_LABELS.get(e["event_type"], e["event_type"])
-    return page(request, "audit.html", events=events, active="audit")
+    return page(request, "audit.html", events=events, active="audit", fresh_chain=True)
 
 
 # ---------------------------------------------------------------- JSON

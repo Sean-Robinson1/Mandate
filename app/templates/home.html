@@ -4,32 +4,41 @@
 <div class="eyebrow">{{ my_org.buyer_org }} · {{ me.name }}, {{ me.role|lower }}</div>
 <div class="page-head">
   <h1>Supplies</h1>
-  <form method="post" action="/kitchen/next-day" class="day-form">
+  <form method="post" action="/kitchen/next-day" class="day-form" id="day-form">
     <span class="day-label">Day {{ day }}</span>
-    <button class="btn secondary" title="Use a day of stock, deliver what is due, and let the agent react">Next day →</button>
+    <button class="btn secondary" id="day-btn" title="Use a day of stock, deliver what is due, and let the agent react">Next day →</button>
   </form>
 </div>
 <p class="lede">What the kitchen has, and what is on the way. When something runs low, the purchasing agent restocks it
   from Valio Aimo{% if my_org.approver_name %}, or asks {{ my_org.approver_name }} first where the rule says so{% endif %}.</p>
 
-<div id="sheet" style="margin-top:20px">{% include "_sheet.html" %}</div>
-<p class="small muted sheet-note" id="sheet-note">
+{% if summary %}
+<div class="day-summary" role="status">
+  <strong>Day {{ day }}.</strong> A day of stock was used.
+  {% if summary.delivered %}{{ summary.delivered }} deliver{{ "y" if summary.delivered == 1 else "ies" }} arrived.{% else %}No deliveries arrived.{% endif %}
+  {% if summary.started %}The agent started {{ summary.started }} restock{{ "s" if summary.started != 1 }}: follow {{ "it" if summary.started == 1 else "them" }} in the Status column.
+  {% else %}Nothing is low enough to reorder.{% endif %}
+</div>
+{% endif %}
+
+<div id="sheet" class="gap-top">{% include "_sheet.html" %}</div>
+<p class="small muted sheet-note" id="sheet-note" aria-live="polite">
   {% if manager %}You can change every white cell. Changes save as you leave the cell.
   {% else %}Record stock counts and daily use in the white cells. Levels and rules are set by {{ my_org.approver_name }}.{% endif %}
 </p>
 
 <section>
   <div class="section-head"><h2>Need something else?</h2></div>
-  <form class="stack" method="post" action="/requests" id="request-form" style="margin-top:16px">
-    <textarea id="text" name="text" required aria-label="Request" placeholder="I need 1,000 litres of lactose-free milk by Monday."></textarea>
+  <form class="stack gap-top" method="post" action="/requests" id="request-form">
+    <textarea id="text" name="text" required aria-label="Request" placeholder="I need 1,000 litres of lactose-free milk by Monday.">{{ prefill }}</textarea>
     <div class="form-foot">
-      <button class="btn" type="submit" id="submit">Send to the agent</button>
+      <button class="btn" type="submit" id="submit" title="Ctrl+Enter">Send to the agent</button>
       <span class="small muted">The agent may order up to {{ my_org.limits.per_order_auto_eur|eur }} alone
         {%- if my_org.hard_constraints.excluded_allergens %}, never with {% for a in my_org.hard_constraints.excluded_allergens %}{{ ALLERGEN_NAMES.get(a, a) }}{{ ", " if not loop.last }}{% endfor %}{% endif %}.
         <a href="/rules">Purchasing rules</a></span>
     </div>
   </form>
-  <ul class="examples" style="margin-top:12px">
+  <ul class="examples gap-top-s">
     {% for kind, text in examples %}
     <li><button type="button" data-example="{{ text }}"><span class="ex-kind">{{ kind }}</span><span class="ex-text">{{ text }}</span></button></li>
     {% endfor %}
@@ -43,39 +52,76 @@
 {% endblock %}
 {% block script %}
 <script>
-  const box = document.getElementById("text");
+  const box = document.getElementById("text"), requestForm = document.getElementById("request-form");
   document.querySelectorAll("[data-example]").forEach(b => b.addEventListener("click", () => {
     box.value = b.dataset.example; box.focus();
   }));
-  document.getElementById("request-form").addEventListener("submit", () => {
+  box.addEventListener("keydown", e => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) requestForm.requestSubmit(); });
+  requestForm.addEventListener("submit", () => {
     const btn = document.getElementById("submit");
     btn.disabled = true; btn.textContent = "Sending…";
   });
+  if (location.search.includes("text=")) { box.focus(); box.setSelectionRange(box.value.length, box.value.length); }
+  document.getElementById("day-form").addEventListener("submit", () => {
+    const btn = document.getElementById("day-btn");
+    btn.disabled = true; btn.textContent = "Next day…";
+  });
+  if (location.search) history.replaceState(null, "", "/");   // a reload should not repeat the day summary
 
   const sheet = document.getElementById("sheet"), note = document.getElementById("sheet-note");
   const defaultNote = note.innerHTML;
+  let busy = {{ "true" if busy else "false" }}, timer = null, noteTimer = null;
+
+  function say(html, ms) {
+    clearTimeout(noteTimer);
+    note.innerHTML = html;
+    if (ms) noteTimer = setTimeout(() => { note.innerHTML = defaultNote; }, ms);
+  }
   async function refresh() {
     if (sheet.contains(document.activeElement) && document.activeElement.classList.contains("cell")) return;
     try {
       const data = await (await fetch("/supplies/sheet", {cache: "no-store"})).json();
       sheet.innerHTML = data.html;
+      busy = data.busy;
     } catch (e) { /* try again on the next tick */ }
   }
+  // Poll quickly while the agent is restocking, slowly otherwise, and not at all in a hidden tab.
+  function schedule() {
+    clearTimeout(timer);
+    if (document.hidden) return;
+    timer = setTimeout(async () => { await refresh(); schedule(); }, busy ? 1500 : 8000);
+  }
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh().then(schedule); else clearTimeout(timer); });
+
   sheet.addEventListener("change", async e => {
     const cell = e.target.closest(".cell");
     if (!cell) return;
     const id = cell.closest("tr").dataset.id;
+    cell.classList.remove("invalid", "saved");
     cell.classList.add("saving");
-    const r = await fetch(`/supplies/${id}`, {method: "POST", headers: {"Content-Type": "application/json"},
-                                              body: JSON.stringify({field: cell.dataset.field, value: cell.value})});
-    const data = await r.json();
+    let r, data = {};
+    try {
+      r = await fetch(`/supplies/${id}`, {method: "POST", headers: {"Content-Type": "application/json", "Accept": "application/json"},
+                                          body: JSON.stringify({field: cell.dataset.field, value: cell.value})});
+      data = await r.json().catch(() => ({}));
+    } catch (err) { r = null; }
     cell.classList.remove("saving");
-    if (!r.ok) { note.innerHTML = `<span class="bad-text">${data.error}</span>`; cell.classList.add("invalid"); return; }
-    note.innerHTML = defaultNote;
+    if (!r || !r.ok) {
+      const msg = (data && (data.error || data.detail)) || "Couldn't save: check the connection and try again.";
+      const span = document.createElement("span"); span.className = "bad-text"; span.textContent = msg;
+      clearTimeout(noteTimer); note.replaceChildren(span);
+      cell.classList.add("invalid");
+      return;
+    }
+    say('<span class="ok-text">Saved ✓</span>', 2500);
     cell.blur();
-    refresh();
+    busy = true;
+    await refresh();
+    const again = sheet.querySelector(`tr[data-id="${id}"] [data-field="${cell.dataset.field}"]`);
+    if (again) { again.classList.add("saved"); setTimeout(() => again.classList.remove("saved"), 1200); }
+    schedule();
   });
   sheet.addEventListener("keydown", e => { if (e.key === "Enter" && e.target.classList.contains("cell")) e.target.blur(); });
-  setInterval(refresh, 2500);
+  schedule();
 </script>
 {% endblock %}

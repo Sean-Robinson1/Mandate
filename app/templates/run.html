@@ -33,7 +33,7 @@
   {% elif run.status == "EXPIRED" %}
     <p class="verdict-title">Not ordered: Valio Aimo's offer changed</p>
     <p>{{ last_line }}</p>
-    <p><a href="/" class="small">Ask again for a new plan</a></p>
+    <p><a href="/?text={{ run.request_text|urlencode }}#request-form" class="small">Ask again for a new plan</a></p>
   {% elif run.status == "REFUSED" %}
     <p class="verdict-title">Not ordered</p>
     <p>{% if "Valio Aimo refused" in last_line %}{{ last_line }}{% else %}The mandate does not allow this, and an approver cannot override it.{% endif %}</p>
@@ -43,7 +43,12 @@
   {% else %}
     <p class="verdict-title">Needs more detail</p>
     <p>{{ run.receipt }}</p>
-    <p class="muted small">Nothing was ordered. Try again with a quantity, a product and a delivery date.</p>
+    <p class="muted small">Nothing was ordered. Add a quantity, a product and a delivery date, and send it again.</p>
+    <form class="stack retry" method="post" action="/requests" id="retry-form">
+      <textarea name="text" required aria-label="Request with more detail">{{ run.request_text }}</textarea>
+      <div class="form-foot"><button class="btn" type="submit">Send to the agent</button>
+        <span class="small muted">Ctrl+Enter sends</span></div>
+    </form>
   {% endif %}
 
   {% if fired and run.status in ("NEEDS_HUMAN", "REFUSED") %}
@@ -51,18 +56,18 @@
     {% for f in fired %}<li><span class="dot {{ f.tone }}"></span>{{ f.message }}</li>{% endfor %}
   </ul>
   {% endif %}
-  {% if approval and approval.note %}<p class="small" style="margin-top:12px">{{ approval.approver_name or approval.approver }}'s note: {{ approval.note }}</p>{% endif %}
+  {% if approval and approval.note %}<p class="small gap-top-s">{{ approval.approver_name or approval.approver }}'s note: {{ approval.note }}</p>{% endif %}
 
   {% if run.status == "NEEDS_HUMAN" %}
     {% if me.id == mandate.approver %}
     <form method="post" action="/requests/{{ run.trace_id }}/decision" class="actions" id="decide-form">
-      <input type="text" name="note" placeholder="Note for the record (optional)" aria-label="Note for the record">
+      <input type="text" name="note" id="decision-note" placeholder="Note for the record (optional)" aria-label="Note for the record" enterkeyhint="done">
       <button class="btn" name="action" value="approve">Approve and order</button>
       <button class="btn secondary" name="action" value="decline">Decline</button>
     </form>
-    <p class="small muted" style="margin-top:10px">Your decision is signed with your key. Valio Aimo checks that signature before it accepts the order.</p>
+    <p class="small muted gap-top-s">Your decision is signed with your key. Valio Aimo checks that signature before it accepts the order.</p>
     {% else %}
-    <p class="small muted" style="margin-top:14px">Only {{ approver }} can approve this. To try it, sign in as {{ approver }} in the sidebar.</p>
+    <p class="small muted gap-top-s">Only {{ approver }} can approve this. To try it, sign in as {{ approver }} in the sidebar.</p>
     {% endif %}
   {% endif %}
 </div>
@@ -131,7 +136,7 @@
       {% for f in fired %}<li class="{{ f.tone }}" title="{{ f.rule }}">{{ f.label }}</li>{% endfor %}
       {% for c in ok %}<li {% if c.note %}class="note"{% endif %} title="{{ c.rule }}">{{ c.label }}</li>{% endfor %}
     </ul>
-    <p class="small muted" style="margin:10px 0 14px">Fixed code reading the signed mandate. The language model only reads the request; it cannot change a limit.</p>
+    <p class="small muted check-note">Fixed code reading the signed mandate. The language model only reads the request; it cannot change a limit.</p>
   </details>
   {% endif %}
 
@@ -157,7 +162,7 @@
       {% endfor %}
     </ol>
     {% if approval %}
-    <p class="small" style="margin:12px 0"><span class="dot {{ 'ok' if approval_valid else 'bad' }}"></span>Approval signature {{ "verified" if approval_valid else "INVALID" }} <span class="mono muted">{{ approval.signer_key_id }}</span></p>
+    <p class="small check-note"><span class="dot {{ 'ok' if approval_valid else 'bad' }}"></span>Approval signature {{ "verified" if approval_valid else "INVALID" }} <span class="mono muted">{{ approval.signer_key_id }}</span></p>
     {% endif %}
   </details>
 
@@ -190,12 +195,23 @@
     setTimeout(poll, 400);
   })();
   const form = document.getElementById("decide-form");
-  if (form) form.addEventListener("submit", e => {
-    form.querySelectorAll("button").forEach(b => b.disabled = true);
-    const hidden = document.createElement("input");
-    hidden.type = "hidden"; hidden.name = "action"; hidden.value = e.submitter ? e.submitter.value : "approve";
-    form.appendChild(hidden);
-    if (e.submitter) e.submitter.textContent = e.submitter.value === "approve" ? "Ordering…" : "Declining…";
-  });
+  if (form) {
+    // Enter in the note must never approve (and place) an order: a decision needs a button press.
+    document.getElementById("decision-note").addEventListener("keydown", e => { if (e.key === "Enter") e.preventDefault(); });
+    form.addEventListener("submit", e => {
+      if (!e.submitter) { e.preventDefault(); return; }
+      form.querySelectorAll("button").forEach(b => b.disabled = true);
+      const hidden = document.createElement("input");
+      hidden.type = "hidden"; hidden.name = "action"; hidden.value = e.submitter.value;
+      form.appendChild(hidden);
+      e.submitter.textContent = e.submitter.value === "approve" ? "Ordering…" : "Declining…";
+    });
+  }
+  const retry = document.getElementById("retry-form");
+  if (retry) {
+    const area = retry.querySelector("textarea");
+    area.addEventListener("keydown", e => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) retry.requestSubmit(); });
+    retry.addEventListener("submit", () => { const b = retry.querySelector("button"); b.disabled = true; b.textContent = "Sending…"; });
+  }
 </script>
 {% endblock %}

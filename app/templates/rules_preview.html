@@ -5,7 +5,7 @@
 <h1>Sign version {{ m.version + 1 }}?</h1>
 <p class="lede">These are the only differences from version {{ m.version }}.</p>
 
-<div class="table-scroll" style="margin-top:20px">
+<div class="table-scroll gap-top">
 <table>
   <thead><tr><th>Rule</th><th>Now</th><th>After signing</th><th></th></tr></thead>
   <tbody>
@@ -21,13 +21,13 @@
 </table>
 </div>
 
-<form method="post" action="/rules/{{ key }}/sign" class="stack" style="margin-top:24px">
+<form method="post" action="/rules/{{ key }}/sign" class="stack gap-top">
   {% for k, v in form.items() %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
   <div>
     <label class="field-label" for="change_note">Why (kept with the new version)</label>
     <input type="text" id="change_note" name="change_note" placeholder="e.g. Wedding season: larger milk orders are routine" maxlength="300">
   </div>
-  <div class="actions" style="margin-top:0">
+  <div class="actions flush">
     <button class="btn">Sign and send to Valio Aimo</button>
     <a class="btn secondary" href="/rules/{{ key }}/edit">Back</a>
   </div>
