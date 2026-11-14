@@ -47,8 +47,8 @@ too much salmon and lettuce, so both have a waste alert.
 ## Optional beat: changing the rules (+40 s)
 
 As Jussi, open **Purchasing rules**, press **Change rules**, raise the agent's own limit, **Review the
-difference**, sign. "Changing the rules is a signed new version, not a setting: Valio Aimo now holds version 2 and
-refuses anything signed under version 1." The "old rules" trick on **Try to cheat** replays
+difference**, sign. "Changing the rules is a signed new version, not a setting: Valio Aimo now holds version 3 and
+refuses anything signed under older versions." The "old rules" trick on **Try to cheat** replays
 last week's version 1, which is why Valio Aimo refuses it.
 
 ## Likely judge questions
