@@ -65,6 +65,11 @@ Each entry: what we assumed, why, and what would replace it in production.
     price; each change is in the audit log. A dish's cost uses the best price evidence available: Valio Aimo's
     signed price for the product in use, then the last confirmed order, then the recorded price history
     (simulated before the first real offer, see app/prices.py), then the list price.
+10o. **A fresh demo starts with a morning stock count** that finds a few items low in each kitchen (hotel: cream
+    and butter; school: lactose-free milk and oat drink; restaurant: cream and grated cheese). The agent then acts
+    for real through Valio Aimo's gateway: items set to "agent restocks" are ordered alone, items set to "ask
+    first" wait for the kitchen's approver. The restaurant's standing orders with its other suppliers are already
+    on the way. This happens once, on day 1 before any request, and again after "Reset demo".
 10m. **Waste is costed at the item's current price** (Valio Aimo's confirmed price once the agent has bought it,
     else the list price) and leaves stock at once. Food cost is shown from recipes, and with logged waste added;
     the gap nobody logged (recipes against stock counts) is not calculated yet.

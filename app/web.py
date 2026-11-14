@@ -45,6 +45,7 @@ _restock_lock = threading.Lock()          # one restock check at a time, so a lo
 with SessionLocal() as _s:
     kitchen.seed(_s)
     kitchen.link_typed_requests(_s, agent.ORG_OF)
+    _FRESH_DEMO = kitchen.demo_start(_s)        # the first morning's stock count; the agent reacts once we are up
 
 
 def _publish_mandates() -> None:
@@ -606,7 +607,11 @@ def reset_demo(confirm: str = Form("")):
         wipe()
         with SessionLocal() as s:
             kitchen.seed(s)
-    return _back(done="The demo started again: day 1, fresh stock, no requests or orders. Purchasing rules are unchanged.")
+            kitchen.demo_start(s)
+    started = sum(len(start_restocks(org)) for org in MANDATES)
+    return _back(done=f"The demo started again on day 1. The morning stock count found a few items low, so the agent "
+                      f"started {started} order{'s' if started != 1 else ''}; some wait for approval. "
+                      f"Purchasing rules are unchanged.")
 
 
 def _delivered_count(s, mandate_id: str) -> int:
@@ -1075,3 +1080,17 @@ def audit_verify():
         c = verify_chain(s)
     return {"ok": c.ok, "events_checked": c.events_checked, "first_bad_seq": c.first_bad_seq,
             "problem": c.problem, "head_hash": c.head_hash}
+
+
+def _first_morning() -> None:
+    """A fresh demo: once the console is up, the agent acts on the morning stock count (real offers and orders)."""
+    time.sleep(3)                                  # let both services finish starting
+    for org in MANDATES:
+        try:
+            start_restocks(org)
+        except Exception:                          # noqa: BLE001  the demo still works; the sheet shows the item as low
+            log.exception("first-morning restocks for %s failed", org)
+
+
+if _FRESH_DEMO:
+    threading.Thread(target=_first_morning, daemon=True).start()

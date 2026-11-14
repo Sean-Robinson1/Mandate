@@ -675,6 +675,30 @@ def next_day(session: Session) -> int:
     return day
 
 
+# The demo's first morning: a stock count finds a few items low, so the agent has real work from the first minute:
+# items set to "agent restocks" are ordered alone, items set to "ask first" wait for the kitchen's approver.
+MORNING_COUNT = {
+    "hotel": ("aino.koskinen", {"Cream": 75, "Butter": 22}),
+    "school": ("sari.virtanen", {"Lactose-free milk": 190, "Oat drink": 22}),
+    "restaurant": ("elina.makinen", {"Cream": 15, "Grated cheese": 2.5}),
+}
+
+
+def demo_start(session: Session) -> bool:
+    """Set up the demo's first morning, once: only on day 1 before any request. Returns True if it did."""
+    if today(session) != 1 or session.scalar(select(Run.trace_id).limit(1)) is not None:
+        return False
+    for org, (by, counts) in MORNING_COUNT.items():
+        for name, value in counts.items():
+            s = session.scalar(select(Supply).where(Supply.org_key == org, Supply.name == name))
+            if s is not None and s.on_hand > value:
+                _record_count(session, s, value, "count", by)
+    session.commit()
+    for org in STANDING_ORDERS:                      # the other suppliers' deliveries are already on their way
+        standing_orders(session, org)
+    return True
+
+
 def standing_orders(session: Session, org_key: str) -> list[Delivery]:
     """Items the agent does not order are topped up by the kitchen's standing orders with those suppliers, when
     they run low and nothing is on the way. shortcut: in a real kitchen the chef or the supplier's rep does this."""

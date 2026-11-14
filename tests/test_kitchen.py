@@ -292,3 +292,16 @@ def test_a_typed_request_is_linked_to_the_kitchen_item_and_shows_as_arriving(she
         assert s.get(Run, result.trace_id).supply_id == supply(sheet_db, "Lactose-free milk").id
         upcoming, _ = kitchen.deliveries(s, "hotel")
     assert [i.via for i in upcoming] == ["agent"] and upcoming[0].supply.name == "Lactose-free milk"
+
+
+def test_the_first_morning_finds_a_few_items_low_once(sheet_db):
+    with sheet_db.buyer_db() as s:
+        assert kitchen.demo_start(s)
+        due = {r.text.split(" of ")[1].split(" by ")[0] for r in kitchen.due_restocks(s, "restaurant")}
+        assert due == {"cream", "grated cheese"}                       # one alone, one waits for the owner
+        assert kitchen.deliveries(s, "restaurant")[0]                  # standing orders already on the way
+        assert not [r for r in kitchen.sheet(s, "restaurant") if r.todo and not r.connected]
+        s.add(Run(trace_id="t1", created_at=NOW.isoformat(), request_text="x", mandate_id="m", buyer_org="b",
+                  status="ORDERED"))
+        s.commit()
+        assert not kitchen.demo_start(s)                               # never again once the demo has started
