@@ -8,7 +8,7 @@ Two people present: one drives, one talks. Practise the person switches; that is
 
 ## Setup (before the judges arrive)
 
-1. Stop the services and reset the demo data (empty databases, version 1 rules, fresh stock):
+1. Stop the services and reset the demo data (empty databases, fresh rules and stock):
    `.venv/Scripts/python -m scripts.reset`
 2. Start both sides: `.venv/Scripts/python -m scripts.dev`. It prints three links: the console (:8000), Valio
    Aimo's gateway (:8100) and Valio Aimo's operator page (`/operator?token=…`).
@@ -19,7 +19,7 @@ Two people present: one drives, one talks. Practise the person switches; that is
 6. If the AI is slow or offline, set `LLM_PROVIDER=none` in `.env` and restart: the rule-based reader handles every
    request in this script.
 
-Bistro Lumo's rules (version 1): the agent orders alone up to **€600 per order** and €2,500 a week; Jussi Heikkinen
+Bistro Lumo's rules (version 2; last week's version 1 allowed only €400): the agent orders alone up to **€600 per order** and €2,500 a week; Jussi Heikkinen
 (owner) approves up to €3,000 per order; above that nothing is ordered, even with approval.
 
 What a fresh start shows: the morning count found cream and grated cheese low, and yesterday's delivery brought
@@ -48,8 +48,8 @@ too much salmon and lettuce, so both have a waste alert.
 
 As Jussi, open **Purchasing rules**, press **Change rules**, raise the agent's own limit, **Review the
 difference**, sign. "Changing the rules is a signed new version, not a setting: Valio Aimo now holds version 2 and
-refuses anything signed under version 1." Doing this before **Try to cheat** also lets its "old rules" trick run
-(otherwise that one is skipped and says why).
+refuses anything signed under version 1." The "old rules" trick on **Try to cheat** replays
+last week's version 1, which is why Valio Aimo refuses it.
 
 ## Likely judge questions
 

@@ -182,3 +182,6 @@ Each entry: what we assumed, why, and what would replace it in production.
 31. **Demo starting stock** for the restaurant is set from what its recipes actually use over two weeks of
     simulated service. On the first morning, yesterday's delivery brought 24 kg of salmon and 12 kg of lettuce
     more than ordered, so the waste alert has something to act on from the start.
+32. **Bistro Lumo's rules start at version 2.** A fresh demo signs last week's version 1 (the agent could order
+    €400 alone) and then today's version 2 (€600), so the rules page has a history and the "Try to cheat" page has
+    a real replaced version to replay.

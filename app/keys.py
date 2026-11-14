@@ -16,7 +16,7 @@ from datetime import datetime
 from pathlib import Path
 
 import settings as config
-from app.mandates import DEMO_MANDATES
+from app.mandates import DEMO_EARLIER, DEMO_MANDATES
 from protocol.mandate import Mandate
 from protocol.registry import TrustRegistry
 from protocol.signing import Signer, sign_document, verify_document
@@ -69,9 +69,14 @@ def load_mandates(root: Path | None = None) -> dict[str, Mandate]:
         if stored is None or "version" not in stored:
             # First run, or a file signed before mandates had versions: issue version 1 (from the stored terms).
             base = Mandate.model_validate(stored) if stored else draft
+            earlier = DEMO_EARLIER.get(key) if stored is None else None
+            first = Mandate.model_validate({**base.model_dump(mode="json"), **earlier[0]}) if earlier else base
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(issue_mandate(base.model_copy(update={"version": 1}), root).model_dump_json(indent=2),
-                            encoding="utf-8")
+            v1 = issue_mandate(first.model_copy(update={"version": 1}), root)
+            path.write_text(v1.model_dump_json(indent=2), encoding="utf-8")
+            if earlier:                                # then today's terms, signed as version 2
+                amend_mandate(key, v1, {k: base.model_dump(mode="json")[k] for k in earlier[0]}, earlier[1],
+                              earlier[2], root)
         mandate = Mandate.model_validate_json(path.read_text(encoding="utf-8"))
         onboard(mandate, root)
         out[key] = mandate

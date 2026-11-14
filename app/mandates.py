@@ -80,6 +80,13 @@ DEMO_MANDATES: dict[str, Mandate] = {
 }
 
 
+# Rules a kitchen had before its current ones, so a fresh demo already has a replaced version: the rules page shows
+# a history, and the "Try to cheat" page can replay the old version (Valio Aimo refuses it).
+DEMO_EARLIER: dict[str, tuple[dict, str, str]] = {
+    "restaurant": ({"limits": {"per_order_auto_eur": 400, "per_order_max_eur": 3000, "per_week_auto_eur": 2000}},
+                   "jussi.heikkinen", "Let the agent order up to €600 alone after a first month without problems"),
+}
+
 def canonical_json(mandate: Mandate) -> bytes:
     """Deterministic bytes to sign: everything except the signature fields (same encoding as protocol.signing)."""
     return canonical_bytes(mandate.model_dump(mode="json", exclude={"signature", "signer_key_id"}))
