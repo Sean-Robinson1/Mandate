@@ -680,6 +680,8 @@ def _run_context(trace_id: str) -> dict:
 @app.get("/requests/{trace_id}", include_in_schema=False)
 def run_detail(request: Request, trace_id: str):
     ctx = _run_context(trace_id)
+    with SessionLocal() as s:
+        ctx["retry_blocker"] = agent.retry_blocker(s, ctx["run"]) if ctx["run"].status in agent.NOT_ORDERED else None
     return page(request, "run.html", **ctx,
                 active="approvals" if ctx["run"].status == "NEEDS_HUMAN" else "activity")
 
@@ -740,6 +742,29 @@ def revise(request: Request, trace_id: str, text: str = Form(...)):
         new_id = agent.open_run(s, text, mandate, requested_by=me.id, supply_id=row.supply_id,
                                 trigger=f"Sent back with changes by {me.name}")
     threading.Thread(target=_work, args=(new_id, text, mandate, reason), daemon=True).start()
+    return RedirectResponse(f"/requests/{new_id}", status_code=303)
+
+
+@app.post("/requests/{trace_id}/retry", include_in_schema=False)
+def retry(request: Request, trace_id: str):
+    """A request that was not ordered (refused, failed, offer changed, declined): the agent starts over on the same
+    words, under the same rules. Nothing carries over from the earlier attempt except the link to it."""
+    me = current_person(request)
+    with SessionLocal() as s:
+        row = s.get(Run, trace_id)
+        if row is None:
+            raise HTTPException(404, "request not found")
+        mandate = MANDATE_BY_ID.get(row.mandate_id)
+        if mandate is None or mandate.mandate_id != MANDATES[me.org_key].mandate_id:
+            raise HTTPException(403, "this request belongs to another kitchen")
+        blocker = agent.retry_blocker(s, row)
+        if blocker:
+            raise HTTPException(409, blocker)
+        supply = s.get(kitchen.Supply, row.supply_id) if row.supply_id else None
+        new_id = agent.open_run(s, row.request_text, mandate, requested_by=me.id, supply_id=row.supply_id,
+                                trigger=f"Tried again by {me.name} after: {STATUS.get(row.status, (row.status,))[0]}")
+    threading.Thread(target=_work, args=(new_id, row.request_text, mandate, kitchen.review_reason(supply)),
+                     daemon=True).start()
     return RedirectResponse(f"/requests/{new_id}", status_code=303)
 
 

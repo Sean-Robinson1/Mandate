@@ -339,6 +339,25 @@ def resend_queued(session: Session, gateway: GatewayClient, mandates: dict[str, 
 
 # ---------------------------------------------------------------- run
 
+NOT_ORDERED = ("REFUSED", "FAILED", "EXPIRED", "DECLINED")
+
+
+def retry_blocker(session: Session, row: Run) -> str | None:
+    """Why this request cannot be tried again now, or None when it can.
+
+    A retry is a new request with the same words, checked from scratch. It is held back while the same stock item
+    already has a request in progress, so trying again never orders an item twice.
+    """
+    if row.status not in NOT_ORDERED:
+        return "Only a request that was not ordered can be tried again."
+    if row.supply_id is not None:
+        busy = session.scalar(select(Run.trace_id).where(Run.supply_id == row.supply_id, Run.status.in_(kitchen.OPEN),
+                                                         Run.trace_id != row.trace_id))
+        if busy:
+            return "This item already has a request in progress. Open it from the stock board instead."
+    return None
+
+
 def open_run(session: Session, text: str, mandate: Mandate, now: datetime | None = None,
              requested_by: str = "", supply_id: int | None = None, trigger: str = "") -> str:
     """Create the run so the console can show it at once; run() then does the work."""

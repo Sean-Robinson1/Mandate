@@ -91,6 +91,23 @@ def test_backend_failure_stops_cleanly(world):
     assert event_types(world, r.trace_id)[-1] == "lookup.failed" and chain_ok(world)
 
 
+def test_a_request_that_was_not_ordered_can_be_tried_again_once_nothing_is_in_progress(world):
+    world.backend.fail = True
+    failed = order(world, 60)
+    world.backend.fail = False
+    with world.buyer_db() as s:
+        row = s.get(Run, failed.trace_id)
+        assert agent.retry_blocker(s, row) is None
+        row.supply_id = 1                                     # a restock of a stock item...
+        busy = Run(trace_id="busy", created_at=NOW.isoformat(), request_text="x", mandate_id=row.mandate_id,
+                   buyer_org=row.buyer_org, status="NEEDS_HUMAN", supply_id=1)
+        s.add(busy)
+        s.commit()
+        assert "in progress" in agent.retry_blocker(s, row)  # ...is held back while another one is open
+        assert agent.retry_blocker(s, busy) is not None       # and only a request that was not ordered can be retried
+    assert order(world, 60).status == "ORDERED"               # the same words go through once the backend is back
+
+
 def test_a_forged_offer_is_not_trusted(world, monkeypatch):
     original = world.gateway.offer
 

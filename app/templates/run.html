@@ -38,7 +38,6 @@
   {% elif run.status == "EXPIRED" %}
     <p class="verdict-title">Not ordered: Valio Aimo's offer changed</p>
     <p>{{ last_line }}</p>
-    <p><a href="/activity?text={{ run.request_text|urlencode }}#request-form" class="small">Ask again for a new plan</a></p>
   {% elif run.status == "REFUSED" %}
     <p class="verdict-title">Not ordered</p>
     <p>{% if "Valio Aimo refused" in last_line %}{{ last_line }}{% else %}The mandate does not allow this, and an approver cannot override it.{% endif %}</p>
@@ -62,6 +61,25 @@
   </ul>
   {% endif %}
   {% if approval and approval.note %}<p class="small gap-top-s">{{ approval.approver_name or approval.approver }}'s note: {{ approval.note }}</p>{% endif %}
+
+  {% if run.status in ("REFUSED", "FAILED", "EXPIRED", "DECLINED") %}
+    {% if retry_blocker %}
+    <p class="small muted gap-top-s">{{ retry_blocker }}</p>
+    {% else %}
+    <form method="post" action="/requests/{{ run.trace_id }}/retry" class="actions" id="retry-same-form">
+      <button class="btn" type="submit">Try again</button>
+      <span class="small muted">The agent starts over with the same request: a new offer from Valio Aimo, and the same purchasing rules{% if run.status == "DECLINED" %}, so it goes to {{ approver }} again{% endif %}.</span>
+    </form>
+    <details class="revise">
+      <summary>Change the request and try again</summary>
+      <form method="post" action="/requests" class="stack revise-form">
+        <label for="retry-text" class="small muted">Change the amount, the product or the delivery day. The agent treats it as a new request.</label>
+        <textarea id="retry-text" name="text" required>{{ run.request_text }}</textarea>
+        <div><button class="btn secondary" type="submit">Send to the agent</button></div>
+      </form>
+    </details>
+    {% endif %}
+  {% endif %}
 
   {% if run.status == "NEEDS_HUMAN" %}
     {% if me.id == mandate.approver %}
