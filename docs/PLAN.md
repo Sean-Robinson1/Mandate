@@ -48,6 +48,8 @@ where possible to avoid merge conflicts.
 | 7 | AI: recipe-aware substitute on stock-out, allergens checked, trade-off explained (only suggests; ordering via policy). Real data hook: on 14 Nov only 1 of ~30 salmon fillets in the mock API had stock; rainbow trout and whitefish fillets were plentiful | `app/planner.py`, `app/menu.py` | open | — |
 | 8 | AI: use-it-up specials from stock near its date (`use_first` in `app/kitchen.py`) | `app/menu.py`, `app/llm.py` | open | — |
 | 9 | Drift alert: a standing order creeping above what sales explain is flagged before it renews | `app/kitchen.py`, `app/policy.py` (stricter only) | open | — |
+| 11 | Ingredient prices: keep every signed Valio Aimo price per stock item and product; price-change alerts per ingredient (€/week effect); cheaper equivalent products with one-click order through the agent; dish impact plugs into item 2/5 once `Dish`/`RecipeLine` land | new `app/prices.py`, `app/db.py` (`PriceRecord`), `app/agent.py` (one hook), new `app/templates/prices.html` | Sam + Claude | In progress |
+| 12 | Try again: a request the agent did not order (refused, failed, offer changed, declined) can be retried or edited and resent; held back while the same item has a request in progress | `app/agent.py`, `app/web.py`, `app/templates/run.html` | Sam + Claude | In progress |
 | 10 | Pitch/demo update: `docs/DEMO.md`, `docs/CHALLENGE_CHECKLIST.md`, `README.md` | docs | open | after 1–6 |
 
 Items 4–9 depend on 2 (recipes). Until it lands, build against the `Dish`/`RecipeLine` shape below.
