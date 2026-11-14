@@ -21,11 +21,15 @@ class TrustRegistry:
     def __init__(self, directory: Path):
         self.dir = Path(directory)
 
-    def public_key(self, key_id: str | None) -> str | None:
+    def public_key(self, key_id: str | None, org: str | None = None) -> str | None:
+        """The key registered under key_id; with org, only if it was registered for that organisation."""
         path = _file(self.dir, key_id or "")
         if path is None or not path.is_file():
             return None
-        return json.loads(path.read_text(encoding="utf-8")).get("public_key")
+        entry = json.loads(path.read_text(encoding="utf-8"))
+        if org is not None and entry.get("org") != org:
+            return None
+        return entry.get("public_key")
 
     def register(self, key_id: str, org: str, public_key: str) -> None:
         path = _file(self.dir, key_id)

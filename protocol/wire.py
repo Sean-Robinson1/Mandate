@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 API_VERSION = "v1"
 OFFER_TTL_MINUTES = 15
@@ -123,6 +123,14 @@ class OrderRequest(BaseModel):
     approval: dict | None = None           # signed approval record, when the mandate requires one
     signer_key_id: str | None = None
     signature: str | None = None
+
+    @field_validator("lines")
+    @classmethod
+    def _one_line_per_product(cls, lines: list[OrderLine]) -> list[OrderLine]:
+        # Stock and approval checks work line by line, so a product must not appear twice.
+        if len({l.product_id for l in lines}) != len(lines):
+            raise ValueError("each product may appear on only one line")
+        return lines
 
 
 class PlaceOrder(BaseModel):
