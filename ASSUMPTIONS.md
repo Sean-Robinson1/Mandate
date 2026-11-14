@@ -140,6 +140,15 @@ Each entry: what we assumed, why, and what would replace it in production.
 22. **Product pages show Valio Aimo's catalog facts through its gateway.** We could not confirm the webshop's
     product link format, so the "Open in Valio Aimo's webshop" link appears only when `VALIO_SHOP_URL` is set.
 
+22a. **"Try to cheat" runs real tricks against the real gateway**, signed with the kitchen's real agent key, and
+    shows Valio Aimo's actual answers. Two are not pure gateway refusals: an edited price is shown failing the
+    signature check against Valio Aimo's published key, because an order carries only the offer number and the
+    gateway prices it from its own stored copy; and "reused offer" uses the kitchen's last placed order, or places
+    one genuine 1-unit order first if there is none. "Old rules" is skipped until the kitchen has signed a second
+    mandate version. Tricks use one unit of a cheap product; the two over-the-limit tricks go just past the agent's
+    own limit, so a wrong acceptance there would be a real order of that size. The last run per kitchen is kept in
+    memory only (each run is in the audit log).
+
 ## Ingredient prices
 
 27. **Ingredient prices are recorded, not looked up.** Valio Aimo's API gives today's price only, so every signed

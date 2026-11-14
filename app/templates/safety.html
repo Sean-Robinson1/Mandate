@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Safety test · Trusted Trade{% endblock %}
+{% block content %}
+<h1>Try to cheat</h1>
+<p class="lede">What if the purchasing agent were buggy, or taken over? This runs a misbehaving copy of
+  {{ my_org.buyer_org }}'s agent against Valio Aimo's live gateway. It tries seven tricks, and each one shows
+  exactly what Valio Aimo answered. Nothing is staged: a trick that gets through shows in red.</p>
+
+<form method="post" action="/safety/run" class="actions" onsubmit="this.querySelector('button').disabled = true; this.querySelector('.run-note').textContent = 'Trying each trick against Valio Aimo…'">
+  <button class="btn">{{ "Run the test again" if last else "Run the cheating agent" }}</button>
+  <span class="muted small run-note">Each trick orders one unit of the cheapest product in a small sample from
+    Valio Aimo, so a mistake would cost little. The two over-the-limit tricks go just past the agent's own limit.</span>
+</form>
+
+{% if last %}
+{% set broken = last.attempts|selectattr("outcome", "equalto", "accepted")|list %}
+{% set refused = last.attempts|selectattr("safe")|list %}
+<div class="verdict {{ 'bad' if broken else ('ok' if refused|length == last.attempts|length else 'warn') }}">
+  <p class="verdict-title">
+    {% if broken %}{{ broken|length }} of {{ last.attempts|length }} tricks got through
+    {% else %}Valio Aimo refused {{ refused|length }} of {{ last.attempts|length }} tricks{% endif %}</p>
+  <p>Run {{ last.at|when("%d %b at %H:%M:%S") }} as {{ last.agent }} (rules version {{ last.version }}).
+    {% if not broken and refused|length < last.attempts|length %}The rest could not be tried; the reason is
+    given below.{% endif %}</p>
+</div>
+
+<section>
+  <div class="section-head"><h2>What the agent tried</h2><span class="muted">Valio Aimo's answer, in its own words</span></div>
+  <ol class="attacks">
+    {% for a in last.attempts %}
+    {% set tone = {"refused": "ok", "accepted": "bad", "skipped": "warn"}.get(a.outcome, "warn") %}
+    <li class="attack {{ tone }}">
+      <div class="attack-head">
+        <strong>{{ a.title }}</strong>
+        <span class="status {{ tone }}"><span class="dot"></span>{{ {"refused": "Refused", "accepted": "Got through", "skipped": "Not tried"}.get(a.outcome, "Could not run") }}</span>
+      </div>
+      <p class="attack-tried">{{ a.tried }}</p>
+      <p class="attack-reason">{% if a.outcome == "refused" %}{{ a.source }}: {% endif %}{{ a.reason }}</p>
+      {% if a.raw %}
+      <details class="raw">
+        <summary>What was sent and answered <span class="mono">{{ a.raw|length }} exchange{{ "s" if a.raw|length != 1 }}</span></summary>
+        {% for x in a.raw %}
+        <p class="raw-label">{{ x.request }}{% if x.status %} · HTTP {{ x.status }}{% endif %}</p>
+        <div class="raw-grid">
+          <div><div class="raw-label">Sent</div><pre>{{ x.sent|tojson(2) if x.sent is not none else "(nothing)" }}</pre></div>
+          <div><div class="raw-label">Answer</div><pre>{{ x.answer|tojson(2) }}</pre></div>
+        </div>
+        {% endfor %}
+      </details>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+</section>
+{% else %}
+<div class="empty-card gap-top">
+  <p><strong>Not run yet.</strong></p>
+  <p class="muted">The tricks: edit a price in a signed offer, reuse an offer, order under old rules, raise its own
+    limits, approve its own order, go over its limit, and sign with someone else's key.</p>
+</div>
+{% endif %}
+
+<p class="small muted gap-top">Every decision here is made by Valio Aimo's gateway code, checking signatures and the
+  signed mandate. The AI model is not involved. Each run is written to the <a href="/audit">audit log</a>.</p>
+{% endblock %}

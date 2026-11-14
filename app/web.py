@@ -10,7 +10,7 @@ import json
 import logging
 import threading
 import time
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -23,7 +23,7 @@ from sqlalchemy import func, select
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 import settings as config
-from app import agent, charts, costs, keys, kitchen, menu, policy, prices, review, rules
+from app import agent, attacks, charts, costs, keys, kitchen, menu, policy, prices, review, rules
 from app.audit import AuditEvent, append_event, event_to_dict, events_for_trace, lock_chain, verify_chain
 from app.db import Order, Run, Sale, SessionLocal, StockLevel, Step, init_db, wipe
 from app.gateway_client import GatewayClient, GatewayError
@@ -134,6 +134,7 @@ EVENT_LABELS = {
     "order.placed": "Order placed",
     "mandate.amended": "Mandate changed and signed",
     "menu.price_changed": "Menu price changed",
+    "safety.tested": "Safety test run against Valio Aimo",
 }
 
 EXAMPLES = [
@@ -1088,6 +1089,36 @@ def audit(request: Request):
     for e in events:
         e["label"] = EVENT_LABELS.get(e["event_type"], e["event_type"])
     return page(request, "audit.html", events=events, active="audit", fresh_chain=True)
+
+
+_safety_runs: dict[str, dict] = {}     # shortcut: the last test run per kitchen, in memory; persist if it must survive restarts
+
+
+@app.get("/safety", include_in_schema=False)
+def safety_page(request: Request):
+    return page(request, "safety.html", last=_safety_runs.get(current_person(request).org_key), active="safety")
+
+
+@app.post("/safety/run", include_in_schema=False)
+def safety_run(request: Request):
+    me = current_person(request)
+    mandate = MANDATES[me.org_key]
+    with SessionLocal() as s:                       # read what we need, then let go before any network call
+        placed = s.scalars(select(Order.confirmation_json).where(Order.mandate_id == mandate.mandate_id,
+                                                                  Order.confirmation_json != "")
+                           .order_by(Order.created_at.desc()).limit(1)).first()
+    used_offer = json.loads(placed).get("offer_id") if placed else None
+    older = next(iter(keys.mandate_history(me.org_key)), None)
+    results = attacks.run(GATEWAY, mandate, date.today() + timedelta(days=3), used_offer_id=used_offer, older=older)
+    with SessionLocal() as s:
+        append_event(s, trace_id=f"safety-{int(time.time())}", actor=f"human:{me.id}", event_type="safety.tested",
+                     payload={"mandate_id": mandate.mandate_id, "version": mandate.version,
+                              "attempts": [{"title": a.title, "outcome": a.outcome, "reason": a.reason}
+                                           for a in results]})
+        s.commit()
+    _safety_runs[me.org_key] = {"at": datetime.now(config.HELSINKI).isoformat(), "attempts": results,
+                                "agent": mandate.agent_id, "version": mandate.version}
+    return RedirectResponse("/safety", status_code=303)
 
 
 # ---------------------------------------------------------------- JSON

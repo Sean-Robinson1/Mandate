@@ -789,3 +789,19 @@ table.tight tbody tr:last-child td { border-bottom: 0; }
 .spend-label .spark { vertical-align: middle; width: 64px; height: 18px; margin-right: 6px; }
 .spend-label > span:last-child { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .spend-label .spark { margin-right: 0; }
+
+/* ---------- try to cheat ---------- */
+.attacks { list-style: none; padding: 0; margin: 0; }
+.attack { background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--muted);
+  border-radius: var(--radius); padding: 14px 18px 12px; margin-bottom: 10px; box-shadow: var(--shadow); }
+.attack.ok { border-left-color: var(--ok); } .attack.warn { border-left-color: var(--warn); }
+.attack.bad { border-left-color: var(--bad); background: var(--bad-bg); }
+.attack-head { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; flex-wrap: wrap; }
+.attack-tried { color: var(--ink-2); margin-top: 4px; }
+.attack-reason { margin-top: 6px; font-size: 14px; }
+.attack.bad .attack-reason { color: var(--bad); font-weight: 600; }
+.attack details.raw { border: 0; margin-top: 4px; }
+.attack details.raw summary { padding: 6px 0 0; font-size: 12.5px; color: var(--muted); }
+.attack details.raw summary .mono { margin-left: 8px; }
+.attack .raw-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+@media (max-width: 700px) { .attack .raw-grid { grid-template-columns: minmax(0, 1fr); } }
