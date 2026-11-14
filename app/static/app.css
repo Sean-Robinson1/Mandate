@@ -549,6 +549,12 @@ code { font: 12px var(--mono); background: var(--accent-2); padding: 1px 4px; bo
 .arrival.two { grid-template-columns: minmax(0, 1fr) auto; }
 .a-day { font-size: 13px; font-weight: 700; color: var(--ink-2); }
 .a-day.today { color: var(--accent); }
+.arr-day > summary.arrival { padding: 10px 0; color: inherit; }
+.arr-day > summary::before { content: none; }
+.arr-day > summary .line-main { display: block; }
+.arr-day[open] .arr-toggle { visibility: hidden; }
+.arr-items { margin: 0 0 10px 84px; padding: 0; list-style: none; font-size: 13px; line-height: 1.7; }
+@media (max-width: 560px) { .arr-items { margin-left: 0; } }
 .empty-note { color: var(--muted); padding: 8px 0; }
 .warn-text { color: var(--warn); font-weight: 600; }
 .bad-text { font-weight: 600; }

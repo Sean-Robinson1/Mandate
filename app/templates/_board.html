@@ -71,18 +71,30 @@
     </a>
     <section class="card" aria-labelledby="h-arriving">
       <div class="card-head"><h2 id="h-arriving">Arriving</h2><span class="muted small">{{ upcoming|length }} this week</span></div>
-      {% for i in upcoming %}
+      {# Today's deliveries each get a row (they need checking in); later days fold into one row per day. #}
+      {% for i in upcoming|selectattr("due") %}
       <div class="arrival">
-        <span class="a-day {{ 'today' if i.due }}">{{ "Today" if i.due else i.on|on }}</span>
+        <span class="a-day today">Today</span>
         <div class="line-main">{{ i.supply.name }} · {{ i.quantity|qty }} {{ i.supply.unit|unit }}
           <span class="sub">{{ i.supplier }} · {% if i.via == "agent" %}<a href="/requests/{{ i.link }}">ordered by the agent</a>{% else %}recorded order{% endif %}</span></div>
-        {% if i.due %}
-          <form method="post" action="/deliveries/{{ i.key }}/check-in"><button class="btn small-btn">Check in</button></form>
-        {% endif %}
+        <form method="post" action="/deliveries/{{ i.key }}/check-in"><button class="btn small-btn">Check in</button></form>
       </div>
-      {% else %}
-      {% if not other_orders %}<p class="empty-note">Nothing on order.</p>{% endif %}
       {% endfor %}
+      {% for day, items in upcoming|rejectattr("due")|groupby("on") %}{% set names = items|map(attribute="supply.name")|list %}
+      <details class="arr-day">
+        <summary class="arrival">
+          <span class="a-day">{{ day|on }}</span>
+          <span class="line-main">{{ items|length }} item{{ "s" if items|length != 1 }}{% set n_agent = items|selectattr("via", "equalto", "agent")|list|length %}{% if n_agent %} · {{ n_agent }} by the agent{% endif %}
+            <span class="sub">{{ names[:3]|join(", ") }}{% if names|length > 3 %} and {{ names|length - 3 }} more{% endif %}</span></span>
+          <span class="small muted arr-toggle">Show</span>
+        </summary>
+        <ul class="arr-items">
+          {% for i in items %}<li>{{ i.supply.name }} · {{ i.quantity|qty }} {{ i.supply.unit|unit }}
+            <span class="muted">· {{ i.supplier }}{% if i.via == "agent" %} · <a href="/requests/{{ i.link }}">ordered by the agent</a>{% endif %}</span></li>{% endfor %}
+        </ul>
+      </details>
+      {% endfor %}
+      {% if not upcoming and not other_orders %}<p class="empty-note">Nothing on order.</p>{% endif %}
       {% for run, o in other_orders %}
       <div class="arrival">
         <span class="a-day">{{ o.delivery_date|day if o.delivery_date else "Soon" }}</span>
