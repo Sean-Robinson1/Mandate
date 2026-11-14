@@ -2,13 +2,13 @@
 database and keys, talking over HTTP (in-process). No network, no LLM.
 
 Prices are 1.00 EUR per litre in 1-litre packs, so an order's total in EUR equals its litres.
-Hotel mandate: the agent may order up to 2,500 EUR alone and 8,000 EUR a week; 10,000 EUR per order is the cap.
+Bistro mandate: the agent may order up to 2,500 EUR alone and 8,000 EUR a week; 10,000 EUR per order is the cap.
 """
 from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -24,6 +24,7 @@ from gateway.backend import Money, ProductAvailability, ProductPrice, ScheduleLi
 from gateway.keys import gateway_signer, registry
 from gateway.service import Gateway
 from gateway.store import make_sessionmaker
+from protocol.mandate import Bands, HardConstraints, Mandate, SpendLimits, SubstitutionPolicy
 
 NOW = datetime(2026, 11, 13, 12, 0, tzinfo=settings.HELSINKI)        # Friday
 CLOSING = datetime(2026, 11, 15, 17, 0, tzinfo=settings.HELSINKI)    # Sunday 17:00 cut-off for Monday delivery
@@ -37,6 +38,23 @@ def product(pid: str, name: str = "Lactose-free milk 1l", contains=("AM",), may_
 
 
 INDEX = [product("100001"), product("100002")]
+
+# A test-only buyer whose mandate forbids nuts, including traces: proves both sides enforce hard limits.
+# (The demo has a single restaurant with no allergen limits; this stands in for a strict buyer such as a school.)
+NUT_FREE = Mandate(
+    mandate_id="mandate-test-nutfree-001",
+    buyer_org="Nut-free test kitchen",
+    agent_id="agent:test-nutfree:purchasing-1",
+    valid_from=date(2026, 11, 1),
+    valid_until=date(2026, 12, 31),
+    limits=SpendLimits(per_order_auto_eur=800, per_order_max_eur=3000, per_week_auto_eur=2500),
+    bands=Bands(min_reliability_auto=0.95),
+    hard_constraints=HardConstraints(excluded_allergens=["AN", "AP"], exclude_may_contain=True,
+                                     require_allergen_data=True),
+    substitution=SubstitutionPolicy(relaxable_preferences=["brand"]),
+    approver="test.approver",
+    approver_name="Test Approver",
+)
 
 
 class FakeValio:
@@ -87,7 +105,10 @@ def world(tmp_path, monkeypatch) -> World:
                  clock=clock)
     engine = make_engine(f"sqlite:///{tmp_path / 'buyer.db'}")
     init_db(engine)
+    mandates = keys.load_mandates()
+    mandates["nutfree"] = keys.issue_mandate(NUT_FREE)
+    keys.onboard(mandates["nutfree"])
     with TestClient(create_app(gw)) as http:
         yield World(backend, clock, gw, GatewayClient(http=http), sessionmaker(engine, expire_on_commit=False),
-                    keys.load_mandates())
+                    mandates)
     engine.dispose()

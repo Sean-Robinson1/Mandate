@@ -14,7 +14,7 @@ from protocol.signing import verify_document
 from tests.conftest import CLOSING, NOW
 
 
-def order(world, litres: int, now: datetime = NOW, buyer: str = "hotel", text: str | None = None):
+def order(world, litres: int, now: datetime = NOW, buyer: str = "bistro", text: str | None = None):
     text = text or f"I need {litres:,} litres of lactose-free milk by Monday"
     with world.buyer_db() as s:
         return agent.run(text, world.mandates[buyer], s, world.client, now=now)
@@ -23,7 +23,7 @@ def order(world, litres: int, now: datetime = NOW, buyer: str = "hotel", text: s
 def decide(world, trace_id: str, approve: bool = True, now: datetime = NOW + timedelta(minutes=5)) -> Run:
     world.clock.now = now
     with world.buyer_db() as s:
-        return agent.decide(s, trace_id, world.mandates["hotel"], approve=approve, gateway=world.client, now=now)
+        return agent.decide(s, trace_id, world.mandates["bistro"], approve=approve, gateway=world.client, now=now)
 
 
 def orders(world, status: str = "PLACED") -> list[Order]:
@@ -79,7 +79,7 @@ def test_over_the_order_limit_waits_for_a_person(world):
 
 def test_unreadable_request_asks_and_is_audited(world):
     with world.buyer_db() as s:
-        r = agent.run("Can you get us some milk?", world.mandates["hotel"], s, world.client, now=NOW)
+        r = agent.run("Can you get us some milk?", world.mandates["bistro"], s, world.client, now=NOW)
     assert r.status == "NEEDS_CLARIFICATION"
     assert event_types(world, r.trace_id) == ["request.received", "clarification.requested"]
 
@@ -106,8 +106,8 @@ def test_a_forged_offer_is_not_trusted(world, monkeypatch):
 
 
 def test_an_edited_mandate_is_refused_by_both_sides(world):
-    """Someone raises the hotel's limit in the stored mandate file: the signature no longer matches."""
-    forged = world.mandates["hotel"].model_copy(update={"limits": world.mandates["hotel"].limits.model_copy(
+    """Someone raises the bistro's limit in the stored mandate file: the signature no longer matches."""
+    forged = world.mandates["bistro"].model_copy(update={"limits": world.mandates["bistro"].limits.model_copy(
         update={"per_order_auto_eur": 1_000_000})})
     with world.buyer_db() as s:
         r = agent.run("I need 1,000 litres of lactose-free milk by Monday", forged, s, world.client, now=NOW)
@@ -123,7 +123,7 @@ def test_approval_is_signed_and_checked_by_valio_aimo(world):
     assert row.status == "APPROVED" and supplier_orders(world) == 1
     record = json.loads(row.approval_json)
     assert record["decision"] == "APPROVED" and record["approver_name"] == "Mikko Laine"
-    assert keys.verify_approval(record, world.mandates["hotel"])
+    assert keys.verify_approval(record, world.mandates["bistro"])
     confirmation = json.loads(orders(world)[0].confirmation_json)
     assert confirmation["approved_by"] == "Mikko Laine"
     assert any(c["check"] == "authority" and "approved by Mikko Laine" in c["message"] for c in confirmation["checks"])

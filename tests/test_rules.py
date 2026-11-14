@@ -25,7 +25,7 @@ def form_for(mandate, **changes) -> dict:
     return form
 
 
-def amend(world, key="hotel", **changes):
+def amend(world, key="bistro", **changes):
     m = world.mandates[key]
     proposed, errors = rules.parse(form_for(m, **changes), m)
     assert errors == []
@@ -37,13 +37,13 @@ def amend(world, key="hotel", **changes):
 # ---------------------------------------------------------------- the form
 
 def test_unchanged_form_means_no_difference(world):
-    m = world.mandates["school"]
+    m = world.mandates["nutfree"]
     proposed, errors = rules.parse(form_for(m), m)
     assert errors == [] and rules.diff(m, proposed) == []
 
 
 def test_diff_names_changes_and_flags_more_freedom(world):
-    m = world.mandates["school"]
+    m = world.mandates["nutfree"]
     proposed, _ = rules.parse(form_for(m, **{"limits.per_order_auto_eur": 1200,
                                              "hard_constraints.excluded_allergens": ["AN", "AP", "AS"]}), m)
     changes = {c["path"]: c for c in rules.diff(m, proposed)}
@@ -53,13 +53,13 @@ def test_diff_names_changes_and_flags_more_freedom(world):
 
 
 def test_dropping_an_allergen_is_flagged_as_more_freedom(world):
-    m = world.mandates["school"]
+    m = world.mandates["nutfree"]
     proposed, _ = rules.parse(form_for(m, **{"hard_constraints.excluded_allergens": ["AP"]}), m)
     assert [c["looser"] for c in rules.diff(m, proposed)] == [True]
 
 
 def test_inconsistent_limits_are_refused(world):
-    m = world.mandates["hotel"]
+    m = world.mandates["bistro"]
     _, errors = rules.parse(form_for(m, **{"limits.per_order_auto_eur": 20000}), m)
     assert errors and "absolute maximum" in errors[0]
     _, errors = rules.parse(form_for(m, **{"limits.per_week_auto_eur": "a lot"}), m)
@@ -72,8 +72,8 @@ def test_new_version_is_signed_and_old_one_kept(world):
     old, new = amend(world, **{"limits.per_order_auto_eur": 3500})
     assert new.version == old.version + 1 and new.changed_by == "mikko.laine"
     assert keys.verify_mandate(new) and new.limits.per_order_auto_eur == 3500
-    assert [m.version for m in keys.mandate_history("hotel")] == [old.version]
-    assert keys.load_mandates()["hotel"].version == new.version              # loaded unchanged afterwards
+    assert [m.version for m in keys.mandate_history("bistro")] == [old.version]
+    assert keys.load_mandates()["bistro"].version == new.version              # loaded unchanged afterwards
 
 
 def test_raised_limit_lets_the_agent_order_alone(world):
@@ -85,7 +85,7 @@ def test_raised_limit_lets_the_agent_order_alone(world):
 def test_valio_aimo_refuses_an_older_version_once_it_has_seen_a_newer_one(world):
     old, new = amend(world, **{"limits.per_order_auto_eur": 3500})
     assert world.client.publish_mandate(new.model_dump(mode="json"))["version"] == new.version
-    world.mandates["hotel"] = old                    # an agent still holding (or replaying) the old version
+    world.mandates["bistro"] = old                    # an agent still holding (or replaying) the old version
     r = order(world, 1000)
     assert r.status == "REFUSED" and "replaced by version" in r.receipt
     assert supplier_orders(world) == 0
@@ -99,7 +99,7 @@ def test_publishing_an_older_version_is_refused(world):
 
 
 def test_a_forged_new_version_is_refused(world):
-    forged = world.mandates["hotel"].model_dump(mode="json")
+    forged = world.mandates["bistro"].model_dump(mode="json")
     forged["version"] = 99
     forged["limits"]["per_order_auto_eur"] = 1_000_000
     status, _ = world.client._call("PUT", "/v1/mandates", json=forged)
@@ -110,7 +110,7 @@ def test_pending_approval_is_rechecked_under_the_new_rules(world):
     r = order(world, 3000)
     amend(world, **{"limits.per_order_auto_eur": 3500})
     with world.buyer_db() as s:
-        row = agent.decide(s, r.trace_id, world.mandates["hotel"], approve=True, gateway=world.client,
+        row = agent.decide(s, r.trace_id, world.mandates["bistro"], approve=True, gateway=world.client,
                            now=NOW + timedelta(minutes=5))
     assert row.status == "APPROVED"
 
@@ -118,7 +118,7 @@ def test_pending_approval_is_rechecked_under_the_new_rules(world):
 # ---------------------------------------------------------------- earned trust
 
 def test_repeated_approvals_suggest_a_higher_limit(world):
-    m = world.mandates["hotel"]
+    m = world.mandates["bistro"]
     with world.buyer_db() as s:
         assert rules.suggestions(s, m, now=NOW) == []
     for litres in (2600, 2700, 2600):            # 7,900 together: held back by the order limit only
@@ -134,7 +134,7 @@ def test_a_single_decline_means_no_suggestion(world):
     for litres in (2600, 2600, 2600):
         decide(world, order(world, litres).trace_id)
     with world.buyer_db() as s:
-        assert rules.suggestions(s, world.mandates["hotel"], now=NOW) == []
+        assert rules.suggestions(s, world.mandates["bistro"], now=NOW) == []
 
 
 def test_orders_held_for_other_reasons_do_not_count(world):
@@ -148,4 +148,4 @@ def test_orders_held_for_other_reasons_do_not_count(world):
             s.commit()
         decide(world, r.trace_id)
     with world.buyer_db() as s:
-        assert rules.suggestions(s, world.mandates["hotel"], now=NOW) == []
+        assert rules.suggestions(s, world.mandates["bistro"], now=NOW) == []

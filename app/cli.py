@@ -1,7 +1,7 @@
 """One request from the command line, through Valio Aimo's gateway (which must be running).
 
     python -m app.cli "I need 1,000 litres of lactose-free milk by Monday."
-    python -m app.cli --buyer school --no-llm "..."
+    python -m app.cli --buyer bistro --no-llm "..."
 """
 import argparse
 import sys
@@ -20,7 +20,7 @@ DEFAULT_REQUEST = ("I need 1,000 litres of lactose-free milk by Monday. "
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Trusted Trade buyer agent")
     ap.add_argument("request", nargs="?", default=DEFAULT_REQUEST)
-    ap.add_argument("--buyer", default="hotel", choices=sorted(DEMO_MANDATES))
+    ap.add_argument("--buyer", default="bistro", choices=sorted(DEMO_MANDATES))
     ap.add_argument("--no-llm", action="store_true", help="rule-based intent parser only")
     args = ap.parse_args(argv)
     if hasattr(sys.stdout, "reconfigure"):

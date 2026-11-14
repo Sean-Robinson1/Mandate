@@ -23,9 +23,9 @@ from sqlalchemy import func, select
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 import settings as config
-from app import agent, charts, keys, kitchen, policy, rules
+from app import agent, charts, keys, kitchen, menu, policy, rules
 from app.audit import AuditEvent, append_event, event_to_dict, events_for_trace, lock_chain, verify_chain
-from app.db import Order, Run, SessionLocal, Step, init_db, wipe
+from app.db import Dish, Order, Run, SessionLocal, Step, init_db, wipe
 from app.gateway_client import GatewayClient, GatewayError
 from app.llm import get_llm
 from app.mandates import PEOPLE
@@ -318,7 +318,7 @@ REORDER_CHOICES = [
                                "level, within the purchasing rules."),
     ("ask", "Agent asks first", "The agent prepares the order; the purchasing manager approves it before it is sent."),
 ]
-WEEK_NOTES = {"school": "none at weekends", "hotel": "busier at weekends"}
+WEEK_NOTES = {"bistro": "busiest on Friday and Saturday"}
 
 
 def _count_label(level, start) -> dict | None:
@@ -741,6 +741,54 @@ def revise(request: Request, trace_id: str, text: str = Form(...)):
                                 trigger=f"Sent back with changes by {me.name}")
     threading.Thread(target=_work, args=(new_id, text, mandate, reason), daemon=True).start()
     return RedirectResponse(f"/requests/{new_id}", status_code=303)
+
+
+# ---------------------------------------------------------------- menu & margins
+
+@app.get("/menu", include_in_schema=False)
+def menu_page(request: Request, error: str = "", saved: str = ""):
+    me = current_person(request)
+    with SessionLocal() as s:
+        data = menu.dashboard(s, me.org_key)
+    return page(request, "menu.html", data=data, manager=is_manager(me), error=error[:200], saved=saved[:200],
+                approver=agent.approver_name(MANDATES[me.org_key]), active="menu")
+
+
+@app.post("/menu/dishes/{dish_id}/price", include_in_schema=False)
+def set_dish_price(request: Request, dish_id: int, price: str = Form(...)):
+    me = current_person(request)
+    if not is_manager(me):
+        raise HTTPException(403, f"only {agent.approver_name(MANDATES[me.org_key])} can change menu prices")
+    with SessionLocal() as s:
+        dish = s.get(Dish, dish_id)
+        if dish is None or dish.org_key != me.org_key:
+            raise HTTPException(404, "no such dish on your menu")
+        try:
+            dish = menu.set_menu_price(s, dish_id, price, me.id)
+        except ValueError as e:
+            message = str(e)[:1].upper() + str(e)[1:] + "."
+            return RedirectResponse(f"/menu?{urlencode({'error': message})}#dish-{dish_id}", status_code=303)
+        saved = f"{dish.name} now costs {eur(dish.menu_price)} on the menu."
+    return RedirectResponse(f"/menu?{urlencode({'saved': saved})}#dish-{dish_id}", status_code=303)
+
+
+@app.post("/menu/actions/switch", include_in_schema=False)
+def switch_product(request: Request, supply_id: int = Form(...), alt_product_id: str = Form(...)):
+    """Hand a cheaper equivalent to the agent: it orders through the same mandate checks and approvals as any request."""
+    me = current_person(request)
+    mandate = MANDATES[me.org_key]
+    with SessionLocal() as s:
+        data = menu.dashboard(s, me.org_key)
+        item = next((c for c in data["cheaper"]
+                     if c["supply_id"] == supply_id and c["alt_product_id"] == alt_product_id), None)
+        if item is None:
+            raise HTTPException(404, "that saving is no longer on offer")
+        if not item["orderable"]:
+            raise HTTPException(409, f"the agent cannot order {item['supply'].lower()}; order it from the supplier")
+        text = menu.switch_request_text(item, date.fromisoformat(data["date"]))[:1000]
+        trace_id = agent.open_run(s, text, mandate, requested_by=me.id, supply_id=supply_id)
+    threading.Thread(target=_work, args=(trace_id, text, mandate), daemon=True).start()
+    return RedirectResponse(f"/requests/{trace_id}", status_code=303)
 
 
 @app.get("/products/{product_id}", include_in_schema=False)

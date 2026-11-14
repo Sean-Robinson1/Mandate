@@ -22,17 +22,17 @@ def use_on(world, name: str, day: int) -> float:
     return kitchen.expected_use(supply(world, name), kitchen.date_of(start, day))
 
 
-def supply(world, name: str, org: str = "hotel") -> Supply:
+def supply(world, name: str, org: str = "bistro") -> Supply:
     with world.buyer_db() as s:
         return s.scalar(select(Supply).where(Supply.org_key == org, Supply.name == name))
 
 
-def set_cell(world, name: str, field: str, value, manager: bool = True, org: str = "hotel"):
+def set_cell(world, name: str, field: str, value, manager: bool = True, org: str = "bistro"):
     with world.buyer_db() as s:
         return kitchen.update_cell(s, supply(world, name, org).id, field, str(value), "test", manager)
 
 
-def run_restocks(world, org: str = "hotel") -> list[agent.RunResult]:
+def run_restocks(world, org: str = "bistro") -> list[agent.RunResult]:
     """What the console does after each change: start the agent on every low row (synchronously here)."""
     results = []
     with world.buyer_db() as s:
@@ -45,7 +45,7 @@ def run_restocks(world, org: str = "hotel") -> list[agent.RunResult]:
     return results
 
 
-def rows(world, org: str = "hotel") -> dict[str, kitchen.Row]:
+def rows(world, org: str = "bistro") -> dict[str, kitchen.Row]:
     with world.buyer_db() as s:
         return {r.supply.name: r for r in kitchen.sheet(s, org, "Mikko Laine")}
 
@@ -54,26 +54,26 @@ def test_seeded_sheet_is_healthy(sheet_db):
     r = rows(sheet_db)
     assert list(r)[:4] == ["Lactose-free milk", "Cream", "Butter", "Oat drink"]
     assert all(not row.low for row in r.values())
-    assert len(r["Cream"].history) == kitchen.HISTORY_DAYS and r["Cream"].history[-1].on_hand == 110
+    assert len(r["Cream"].history) == kitchen.HISTORY_DAYS and r["Cream"].history[-1].on_hand == 40
     with sheet_db.buyer_db() as s:
-        assert kitchen.due_restocks(s, "hotel") == []
+        assert kitchen.due_restocks(s, "bistro") == []
 
 
 def test_a_day_uses_stock_and_records_it(sheet_db):
     with sheet_db.buyer_db() as s:
         assert kitchen.next_day(s) == 2
-    assert supply(sheet_db, "Lactose-free milk").on_hand == 760 - use_on(sheet_db, "Lactose-free milk", 2)
+    assert supply(sheet_db, "Lactose-free milk").on_hand == 60 - use_on(sheet_db, "Lactose-free milk", 2)
     assert rows(sheet_db)["Lactose-free milk"].history[-1].day == 2
 
 
-def test_school_uses_nothing_at_weekends(sheet_db):
-    milk = supply(sheet_db, "Lactose-free milk", "school")
-    assert kitchen.expected_use(milk, date(2026, 11, 14)) == 0          # Saturday
-    assert kitchen.expected_use(milk, date(2026, 11, 16)) == 90         # Monday
+def test_bistro_uses_most_at_weekends(sheet_db):
+    milk = supply(sheet_db, "Lactose-free milk")
+    assert kitchen.expected_use(milk, date(2026, 11, 14)) == 19.6       # Saturday: 14 L x 1.4
+    assert kitchen.expected_use(milk, date(2026, 11, 16)) == 9.8        # Monday: 14 L x 0.7
 
 
 def test_forecast_counts_deliveries_and_finds_the_day_it_runs_out(sheet_db):
-    r = rows(sheet_db)["Cream"]                                          # 110 L, ~25 L a day
+    r = rows(sheet_db)["Cream"]                                          # 40 L, ~9 L a day
     assert r.runs_out_day is not None and 4 <= r.runs_out_day - 1 <= 6
     with sheet_db.buyer_db() as s:
         kitchen.record_order(s, s.get(Supply, r.supply.id), "200", "2026-11-15", "test")
@@ -93,13 +93,13 @@ def test_agent_reordering_only_for_suppliers_with_a_gateway(sheet_db):
         set_cell(sheet_db, "Potatoes", "rule", "auto")
     set_cell(sheet_db, "Potatoes", "on_hand", 10)                        # low, but the kitchen orders it itself
     with sheet_db.buyer_db() as s:
-        assert kitchen.due_restocks(s, "hotel") == []
+        assert kitchen.due_restocks(s, "bistro") == []
 
 
 def test_stock_file_import_matches_names_and_reports_the_rest(sheet_db):
     data = "Item;On hand\ncream;95,5\nEggs;720\nCaviar;3\nButter;-1\n".encode()
     with sheet_db.buyer_db() as s:
-        result = kitchen.import_counts(s, "hotel", kitchen.parse_stock_file(data), "import", "test")
+        result = kitchen.import_counts(s, "bistro", kitchen.parse_stock_file(data), "import", "test")
     assert result.updated == ["Cream", "Eggs"] and result.unknown == ["Caviar"] and len(result.invalid) == 1
     assert supply(sheet_db, "Cream").on_hand == 95.5
     assert rows(sheet_db)["Cream"].history[-1].source == "import"
@@ -108,29 +108,29 @@ def test_stock_file_import_matches_names_and_reports_the_rest(sheet_db):
 
 
 def test_low_auto_row_is_restocked_up_to_its_level_without_asking(sheet_db):
-    set_cell(sheet_db, "Lactose-free milk", "on_hand", 300)                 # below 600
+    set_cell(sheet_db, "Lactose-free milk", "on_hand", 30)                  # below 40
     [result] = run_restocks(sheet_db)
     assert result.status == "ORDERED"
-    assert result.intent.quantity == 1300                                    # up to 1,600
+    assert result.intent.quantity == 90                                      # up to 120
     r = rows(sheet_db)["Lactose-free milk"]
-    assert r.on_order == 1300 and r.status == "On order"
+    assert r.on_order == 90 and r.status == "On order"
     with sheet_db.buyer_db() as s:
-        assert kitchen.due_restocks(s, "hotel") == []                        # nothing ordered twice
+        assert kitchen.due_restocks(s, "bistro") == []                        # nothing ordered twice
 
 
 def test_low_ask_first_row_waits_for_the_manager(sheet_db):
     set_cell(sheet_db, "Lactose-free milk", "rule", "ask")
-    set_cell(sheet_db, "Lactose-free milk", "on_hand", 300)
+    set_cell(sheet_db, "Lactose-free milk", "on_hand", 30)
     [result] = run_restocks(sheet_db)
     assert result.status == "NEEDS_HUMAN"
     assert [x.rule for x in result.policy.reasons] == ["request.review_required"]
     assert rows(sheet_db)["Lactose-free milk"].status == "Waiting for Mikko Laine"
     with sheet_db.buyer_db() as s:
-        assert kitchen.due_restocks(s, "hotel") == []                        # already being decided
+        assert kitchen.due_restocks(s, "bistro") == []                        # already being decided
 
 
 def test_agent_delivery_waits_for_check_in_and_then_tops_up(sheet_db):
-    set_cell(sheet_db, "Lactose-free milk", "on_hand", 300)
+    set_cell(sheet_db, "Lactose-free milk", "on_hand", 30)
     run_restocks(sheet_db)
     with sheet_db.buyer_db() as s:
         order = s.scalar(select(Order))
@@ -138,14 +138,14 @@ def test_agent_delivery_waits_for_check_in_and_then_tops_up(sheet_db):
     with sheet_db.buyer_db() as s:
         for _ in range(lead):                     # the real lead time (Fri -> Mon) in kitchen days
             kitchen.next_day(s)
-        [due] = [i for i in kitchen.deliveries(s, "hotel")[0] if i.due]
+        [due] = [i for i in kitchen.deliveries(s, "bistro")[0] if i.due]
         before = supply(sheet_db, "Lactose-free milk").on_hand
-        kitchen.check_in(s, "hotel", due.key, "test")
+        kitchen.check_in(s, "bistro", due.key, "test")
         assert s.get(Order, order.order_id).status == "DELIVERED"
-    assert supply(sheet_db, "Lactose-free milk").on_hand == before + 1300
-    assert rows(sheet_db)["Lactose-free milk"].delivered_today == 1300
+    assert supply(sheet_db, "Lactose-free milk").on_hand == before + 90
+    assert rows(sheet_db)["Lactose-free milk"].delivered_today == 90
     with sheet_db.buyer_db() as s, pytest.raises(ValueError):
-        kitchen.check_in(s, "hotel", due.key, "test")                        # not twice
+        kitchen.check_in(s, "bistro", due.key, "test")                        # not twice
 
 
 def test_unchecked_delivery_is_taken_in_the_next_day(sheet_db):
@@ -153,9 +153,10 @@ def test_unchecked_delivery_is_taken_in_the_next_day(sheet_db):
     with sheet_db.buyer_db() as s:
         kitchen.record_order(s, s.get(Supply, cream.id), "100", "2026-11-14", "test")    # day 2
         kitchen.next_day(s)                                                 # day 2: waits for check-in
-        assert supply(sheet_db, "Cream").on_hand == 110 - use_on(sheet_db, "Cream", 2)
+        assert supply(sheet_db, "Cream").on_hand == 40 - use_on(sheet_db, "Cream", 2)
         kitchen.next_day(s)                                                 # day 3: taken in first
-    assert supply(sheet_db, "Cream").on_hand == 110 + 100 - use_on(sheet_db, "Cream", 2) - use_on(sheet_db, "Cream", 3)
+    assert supply(sheet_db, "Cream").on_hand == pytest.approx(
+        40 + 100 - use_on(sheet_db, "Cream", 2) - use_on(sheet_db, "Cream", 3))
 
 
 def test_check_in_refuses_a_delivery_not_due_yet(sheet_db):
@@ -163,28 +164,28 @@ def test_check_in_refuses_a_delivery_not_due_yet(sheet_db):
     with sheet_db.buyer_db() as s:
         d = kitchen.record_order(s, s.get(Supply, cream.id), "100", "2026-11-16", "test")
         with pytest.raises(ValueError):
-            kitchen.check_in(s, "hotel", f"d-{d.id}", "test")
+            kitchen.check_in(s, "bistro", f"d-{d.id}", "test")
 
 
 def test_to_order_groups_by_supplier_and_mark_ordered_uses_lead_time(sheet_db):
     groups = kitchen.to_order(list(rows(sheet_db).values()))
     assert groups[0].supplier == "Valio Aimo" and groups[0].agent             # the agent's group first
     pelto = next(g for g in groups if g.supplier == "Pelto Produce Oy")
-    assert not pelto.agent and "Potatoes" in [r.supply.name for r in pelto.rows]
-    potatoes = supply(sheet_db, "Potatoes")
+    assert not pelto.agent and "Eggs" in [r.supply.name for r in pelto.rows]
+    eggs = supply(sheet_db, "Eggs")
     with sheet_db.buyer_db() as s:
-        d = kitchen.mark_ordered(s, "hotel", potatoes.id, "test")
-        assert (d.quantity, d.due_day) == (120, 1 + kitchen.SUPPLIERS["Pelto Produce Oy"]["lead_days"])
+        d = kitchen.mark_ordered(s, "bistro", eggs.id, "test")
+        assert (d.quantity, d.due_day) == (240, 1 + kitchen.SUPPLIERS["Pelto Produce Oy"]["lead_days"])
         with pytest.raises(ValueError):
-            kitchen.mark_ordered(s, "hotel", potatoes.id, "test")             # already on order
-    assert not rows(sheet_db)["Potatoes"].todo
+            kitchen.mark_ordered(s, "bistro", eggs.id, "test")             # already on order
+    assert not rows(sheet_db)["Eggs"].todo
 
 
 def test_use_first_follows_the_newest_deliveries(sheet_db):
     with sheet_db.buyer_db() as s:
         for _ in range(4):
             kitchen.next_day(s)
-        batches = kitchen.use_first(s, "hotel")
+        batches = kitchen.use_first(s, "bistro")
     assert all(b.days_left <= kitchen.USE_FIRST_DAYS for b in batches)
     assert all(b.quantity <= b.supply.on_hand for b in batches)
 
@@ -192,18 +193,18 @@ def test_use_first_follows_the_newest_deliveries(sheet_db):
 def test_stock_count_keeps_blank_fields(sheet_db):
     cream, eggs = supply(sheet_db, "Cream"), supply(sheet_db, "Eggs")
     with sheet_db.buyer_db() as s:
-        result = kitchen.save_count(s, "hotel", {cream.id: "95", eggs.id: " "}, "test")
+        result = kitchen.save_count(s, "bistro", {cream.id: "95", eggs.id: " "}, "test")
     assert result.updated == ["Cream"]
-    assert supply(sheet_db, "Cream").on_hand == 95 and supply(sheet_db, "Eggs").on_hand == 900
+    assert supply(sheet_db, "Cream").on_hand == 95 and supply(sheet_db, "Eggs").on_hand == 360
 
 
 def test_delivered_orders_still_count_towards_the_week(sheet_db):
-    set_cell(sheet_db, "Lactose-free milk", "on_hand", 300)
+    set_cell(sheet_db, "Lactose-free milk", "on_hand", 30)
     run_restocks(sheet_db)
     with sheet_db.buyer_db() as s:
         for _ in range(4):
             kitchen.next_day(s)
-        assert agent.week_spend(s, sheet_db.mandates["hotel"].mandate_id, NOW) == 1300
+        assert agent.week_spend(s, sheet_db.mandates["bistro"].mandate_id, NOW) == 90
 
 
 def test_crew_can_count_but_only_the_manager_sets_levels_and_rules(sheet_db):
@@ -220,22 +221,22 @@ def test_crew_can_count_but_only_the_manager_sets_levels_and_rules(sheet_db):
                                          ("rule", "always")])
 def test_bad_cell_values_are_refused(sheet_db, field, value):
     with pytest.raises(ValueError):
-        set_cell(sheet_db, "Cream", field, value)          # reorder 500 would be above 'order up to' 250
+        set_cell(sheet_db, "Cream", field, value)          # reorder 500 would be above 'order up to' 80
 
 
 def test_restock_request_reads_like_a_person_wrote_it(sheet_db):
     milk = supply(sheet_db, "Lactose-free milk")
-    assert kitchen.restock_text(milk, 1300, NOW.date()) == "Restock 1,300 litres of lactose-free milk by Monday"
+    assert kitchen.restock_text(milk, 90, NOW.date()) == "Restock 90 litres of lactose-free milk by Monday"
 
 
 def test_agent_order_from_dashboard_only_for_gateway_suppliers(sheet_db):
     with sheet_db.buyer_db() as s:
-        r = kitchen.agent_order(s, "hotel", supply(sheet_db, "Butter").id, "40")
+        r = kitchen.agent_order(s, "bistro", supply(sheet_db, "Butter").id, "40")
         assert r.text.startswith("Restock 40 kg of butter") and r.review_reason      # butter is 'ask first'
         with pytest.raises(ValueError):
-            kitchen.agent_order(s, "hotel", supply(sheet_db, "Potatoes").id)        # no gateway
+            kitchen.agent_order(s, "bistro", supply(sheet_db, "Potatoes").id)        # no gateway
         with pytest.raises(ValueError):
-            kitchen.agent_order(s, "hotel", supply(sheet_db, "Cream").id, "0")
+            kitchen.agent_order(s, "bistro", supply(sheet_db, "Cream").id, "0")
 
 
 def test_agent_suggests_one_delivery_for_items_due_soon(sheet_db):
@@ -246,7 +247,7 @@ def test_agent_suggests_one_delivery_for_items_due_soon(sheet_db):
 
 def test_mark_ordered_takes_a_typed_quantity(sheet_db):
     with sheet_db.buyer_db() as s:
-        d = kitchen.mark_ordered(s, "hotel", supply(sheet_db, "Coffee beans").id, "test", "15")
+        d = kitchen.mark_ordered(s, "bistro", supply(sheet_db, "Coffee beans").id, "test", "15")
     assert d.quantity == 15
 
 
@@ -260,23 +261,23 @@ def test_reset_starts_the_simulation_again(sheet_db):
         assert s.scalar(select(Supply.id)) is None
         kitchen.seed(s, start=NOW.date())
         assert kitchen.today(s) == 1
-    assert supply(sheet_db, "Lactose-free milk").on_hand == 760
+    assert supply(sheet_db, "Lactose-free milk").on_hand == 60
 
 
 def test_usual_week_matches_the_kitchen_item_by_words_and_unit(sheet_db):
     with sheet_db.buyer_db() as s:
-        name, week = kitchen.usual_week(s, "hotel", ["butter"], "KG")
-        assert name == "Butter" and week == round(6 * sum(kitchen.WEEK["hotel"]), 2)
-        assert kitchen.usual_week(s, "school", ["milk"], "L")[1] == 90 * 5          # closed at weekends
-        assert kitchen.usual_week(s, "hotel", ["butter"], "L") is None              # different unit
-        assert kitchen.usual_week(s, "hotel", ["caviar"], "KG") is None
+        name, week = kitchen.usual_week(s, "bistro", ["butter"], "KG")
+        assert name == "Butter" and week == round(3 * sum(kitchen.WEEK["bistro"]), 2)
+        assert kitchen.usual_week(s, "bistro", ["milk"], "L")[1] == round(14 * sum(kitchen.WEEK["bistro"]), 2)
+        assert kitchen.usual_week(s, "bistro", ["butter"], "L") is None              # different unit
+        assert kitchen.usual_week(s, "bistro", ["caviar"], "KG") is None
 
 
 def test_a_typed_request_is_linked_to_the_kitchen_item_and_shows_as_arriving(sheet_db):
-    text = "I need 1,000 litres of lactose-free milk by Monday."
+    text = "I need 60 litres of lactose-free milk by Monday."
     with sheet_db.buyer_db() as s:
-        result = agent.run(text, sheet_db.mandates["hotel"], s, sheet_db.client, now=NOW)
+        result = agent.run(text, sheet_db.mandates["bistro"], s, sheet_db.client, now=NOW)
         assert result.status == "ORDERED"
         assert s.get(Run, result.trace_id).supply_id == supply(sheet_db, "Lactose-free milk").id
-        upcoming, _ = kitchen.deliveries(s, "hotel")
+        upcoming, _ = kitchen.deliveries(s, "bistro")
     assert [i.via for i in upcoming] == ["agent"] and upcoming[0].supply.name == "Lactose-free milk"

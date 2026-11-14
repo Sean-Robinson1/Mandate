@@ -2,7 +2,7 @@
 
 Where the numbers come from, like a real kitchen:
   - stock counts: a count walked through each storage area, a stock file, or the kitchen's own stock system;
-  - daily use: the crew's figure for a typical day, scaled by the kitchen's week (a school is closed at weekends);
+  - daily use: the crew's figure for a typical day, scaled by the kitchen's week (a bistro is busiest at weekends);
   - deliveries: orders a person placed (and ticked off here), and orders the purchasing agent placed.
     A delivery adds to stock when someone checks it in.
 
@@ -43,8 +43,7 @@ STEP = {"L": 10, "KG": 5, "PCS": 30}
 UNIT_WORDS = {"L": "litres", "KG": "kg", "PCS": "pieces"}
 AREAS = {"cold": "Cold room", "dry": "Dry store", "clean": "Cleaning"}
 # Share of a typical day's use on each weekday, Monday first. shortcut: per kitchen in settings when there are more.
-WEEK = {"hotel": (0.9, 0.9, 0.95, 1.0, 1.1, 1.25, 0.9),
-        "school": (1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0)}
+WEEK = {"bistro": (0.7, 0.8, 0.9, 1.0, 1.3, 1.4, 0.9)}
 FLAT = (1.0,) * 7
 # shortcut: a suppliers table when kitchens can add their own.
 SUPPLIERS = {
@@ -53,25 +52,31 @@ SUPPLIERS = {
     "Paahtimo Oy": {"lead_days": 2, "terms": "delivers in 2 days", "contact": "Webshop"},
     "Puhdas Oy": {"lead_days": 4, "terms": "delivers weekly", "contact": "Email orders"},
     "Leipomo Oy": {"lead_days": 1, "terms": "delivers every weekday", "contact": "Phone 040 765 4321"},
+    "Meri Kala Oy": {"lead_days": 1, "terms": "delivers Tue–Sat", "contact": "Phone 040 222 3344"},
+    "Lihatalo Oy": {"lead_days": 2, "terms": "delivers Mon, Wed, Fri", "contact": "Webshop"},
 }
 
 DEFAULT_SUPPLIES = {   # name, area, supplier, agent's term, unit, on hand, use, reorder, up to, rule, € per unit, shelf days
-    "hotel": [
-        ("Lactose-free milk", "cold", "Valio Aimo", "lactose-free milk", "L", 760, 220, 600, 1600, "auto", 1.05, 7),
-        ("Cream", "cold", "Valio Aimo", "cream", "L", 110, 25, 80, 250, "auto", 3.9, 10),
-        ("Butter", "cold", "Valio Aimo", "butter", "KG", 34, 6, 25, 80, "ask", 8.5, 60),
-        ("Oat drink", "cold", "Valio Aimo", "oat drink", "L", 70, 15, 40, 150, "auto", 1.6, 0),
-        ("Eggs", "cold", "Pelto Produce Oy", "", "PCS", 900, 240, 600, 1800, "off", 0.22, 21),
-        ("Potatoes", "dry", "Pelto Produce Oy", "", "KG", 180, 35, 100, 300, "off", 0.9, 30),
-        ("Coffee beans", "dry", "Paahtimo Oy", "", "KG", 22, 3, 12, 40, "off", 18.0, 0),
-        ("Dishwasher detergent", "clean", "Puhdas Oy", "", "L", 40, 4, 20, 60, "off", 4.2, 0),
-    ],
-    "school": [
-        ("Lactose-free milk", "cold", "Valio Aimo", "lactose-free milk", "L", 260, 90, 200, 600, "auto", 1.05, 7),
-        ("Butter", "cold", "Valio Aimo", "butter", "KG", 14, 2, 10, 30, "auto", 8.5, 60),
-        ("Oat drink", "cold", "Valio Aimo", "oat drink", "L", 35, 10, 25, 80, "ask", 1.6, 0),
-        ("Carrots", "cold", "Pelto Produce Oy", "", "KG", 60, 14, 40, 120, "off", 1.1, 21),
-        ("Rye bread", "dry", "Leipomo Oy", "", "KG", 45, 12, 30, 80, "off", 4.5, 4),
+    "bistro": [
+        ("Lactose-free milk", "cold", "Valio Aimo", "lactose-free milk", "L", 60, 14, 40, 120, "auto", 1.05, 7),
+        ("Cream", "cold", "Valio Aimo", "cream", "L", 40, 9, 25, 80, "auto", 3.9, 10),
+        ("Butter", "cold", "Valio Aimo", "butter", "KG", 18, 3, 10, 30, "ask", 8.5, 60),
+        ("Oat drink", "cold", "Valio Aimo", "oat drink", "L", 20, 4, 10, 40, "auto", 1.6, 0),
+        ("Crème fraîche", "cold", "Valio Aimo", "creme fraiche", "KG", 8, 1.5, 5, 15, "auto", 5.2, 14),
+        ("Emmental cheese", "cold", "Valio Aimo", "emmental", "KG", 10, 1.6, 6, 20, "auto", 12.5, 45),
+        ("Greek yoghurt", "cold", "Valio Aimo", "yoghurt", "KG", 9, 2, 6, 18, "auto", 3.4, 14),
+        ("Eggs", "cold", "Pelto Produce Oy", "", "PCS", 360, 70, 200, 600, "off", 0.22, 21),
+        ("Salmon fillet", "cold", "Meri Kala Oy", "", "KG", 12, 4, 8, 20, "off", 16.5, 3),
+        ("Beef sirloin", "cold", "Lihatalo Oy", "", "KG", 10, 2.5, 6, 16, "off", 29.0, 5),
+        ("Chicken thigh", "cold", "Lihatalo Oy", "", "KG", 14, 3.5, 8, 20, "off", 7.8, 4),
+        ("Mushrooms", "cold", "Pelto Produce Oy", "", "KG", 6, 1.8, 4, 10, "off", 6.5, 5),
+        ("Lettuce", "cold", "Pelto Produce Oy", "", "KG", 5, 1.6, 3, 8, "off", 5.0, 4),
+        ("Lingonberries", "cold", "Pelto Produce Oy", "", "KG", 6, 0.8, 3, 10, "off", 7.5, 90),
+        ("Potatoes", "dry", "Pelto Produce Oy", "", "KG", 80, 14, 40, 120, "off", 0.9, 30),
+        ("Wheat flour", "dry", "Pelto Produce Oy", "", "KG", 25, 2, 10, 40, "off", 1.2, 0),
+        ("Rye bread", "dry", "Leipomo Oy", "", "KG", 10, 3, 6, 15, "off", 4.5, 4),
+        ("Coffee beans", "dry", "Paahtimo Oy", "", "KG", 8, 1, 4, 12, "off", 18.0, 0),
+        ("Dishwasher detergent", "clean", "Puhdas Oy", "", "L", 15, 1.5, 8, 25, "off", 4.2, 0),
     ],
 }
 
@@ -138,6 +143,10 @@ def seed(session: Session, start: date | None = None) -> None:
                 session.add(s)
                 session.flush()
                 _seed_history(session, s, start)
+        from app import menu_seed
+        from app.db import Dish
+        if session.scalar(select(Dish.id).limit(1)) is None:
+            menu_seed.seed_menu(session, start)
     session.commit()
 
 
@@ -590,6 +599,8 @@ def next_day(session: Session) -> int:
         supply.on_hand = round(stock - used, 2)
         session.add(StockLevel(supply_id=supply.id, day=day, on_hand=supply.on_hand, used=round(used, 2),
                                received=round(got, 2), source="day"))
+    from app import menu_seed
+    menu_seed.simulate_day(session, day)
     session.commit()
     return day
 

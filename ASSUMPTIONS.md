@@ -101,3 +101,20 @@ Each entry: what we assumed, why, and what would replace it in production.
     never causes a second order. Production: a durable outbox and Valio Aimo's order API with idempotency keys.
 22. **Product pages show Valio Aimo's catalog facts through its gateway.** We could not confirm the webshop's
     product link format, so the "Open in Valio Aimo's webshop" link appears only when `VALIO_SHOP_URL` is set.
+
+## Menu & margins
+
+23. **One demo restaurant.** Bistro Satama Oy (Helsinki) replaces the hotel and school demo buyers. Its menu,
+    recipes, four weeks of sales and four weeks of ingredient prices are simulated on first run, with a few
+    deliberate price moves (cream, Emmental, butter, salmon) so the alerts have something real to show. New days
+    add simulated sales. Production: menu and sales from the restaurant's till (POS) export or API, recipes from
+    its recipe system or entered by the chef.
+24. **Margins are before VAT.** Menu prices include Finland's 14% VAT on restaurant food; margins use the net
+    price (menu price / 1.14). Plate cost is the recipe's quantities at the current price of the product in use,
+    or the item's unit cost when no price has been recorded. Waste, trim loss and staff meals are not counted.
+25. **Ingredient prices are recorded, not looked up.** Valio Aimo's API gives today's price only, so every
+    signed offer the agent receives is stored per product and day; history before the first run is simulated.
+    A "cheaper equivalent" is a product Valio Aimo has offered for the same stock item at a lower price per
+    litre or kg; ordering it still goes through the agent and the mandate's checks.
+26. **Suggested menu prices restore the dish's target margin** (70% unless set) and are rounded up to the next
+    €0.50. They are suggestions: only the restaurant manager can change a menu price.

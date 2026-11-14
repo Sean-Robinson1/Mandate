@@ -1,4 +1,4 @@
-"""The two demo buyers, their people, and the mandate JSON Schema.
+"""The demo restaurant, its people, and the mandate JSON Schema.
 
 A mandate here is the organisation's *intent*. It becomes authority only once the organisation signs it with
 its own key (app/keys.py issues and stores the signed copy; nothing re-signs it afterwards).
@@ -8,7 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 
-from protocol.mandate import Bands, HardConstraints, Mandate, SpendLimits, SubstitutionPolicy
+from protocol.mandate import Mandate, SpendLimits, SubstitutionPolicy
 from protocol.signing import canonical_bytes
 
 _VALID_FROM = date(2026, 11, 1)
@@ -24,16 +24,15 @@ class Person:
 
 
 PEOPLE: dict[str, Person] = {p.id: p for p in [
-    Person("aino.koskinen", "Aino Koskinen", "Head chef", "hotel"),
-    Person("mikko.laine", "Mikko Laine", "Purchasing manager", "hotel"),
-    Person("sari.virtanen", "Sari Virtanen", "Kitchen manager", "school"),
+    Person("aino.koskinen", "Aino Koskinen", "Head chef", "bistro"),
+    Person("mikko.laine", "Mikko Laine", "Restaurant manager", "bistro"),
 ]}
 
 DEMO_MANDATES: dict[str, Mandate] = {
-    "hotel": Mandate(
-        mandate_id="mandate-hotel-001",
-        buyer_org="Nordic Harbour Hotels Oy",
-        agent_id="agent:nordic-harbour:purchasing-1",
+    "bistro": Mandate(
+        mandate_id="mandate-bistro-001",
+        buyer_org="Bistro Satama Oy",
+        agent_id="agent:bistro-satama:purchasing-1",
         valid_from=_VALID_FROM,
         valid_until=_VALID_UNTIL,
         limits=SpendLimits(per_order_auto_eur=2500, per_order_max_eur=10000, per_week_auto_eur=8000),
@@ -43,23 +42,6 @@ DEMO_MANDATES: dict[str, Mandate] = {
         ),
         approver="mikko.laine",
         approver_name="Mikko Laine",
-    ),
-    "school": Mandate(
-        mandate_id="mandate-school-001",
-        buyer_org="Kaarinan koulukeittiö (school kitchen)",
-        agent_id="agent:kaarina-school:purchasing-1",
-        valid_from=_VALID_FROM,
-        valid_until=_VALID_UNTIL,
-        limits=SpendLimits(per_order_auto_eur=800, per_order_max_eur=3000, per_week_auto_eur=2500),
-        bands=Bands(min_reliability_auto=0.95),
-        hard_constraints=HardConstraints(
-            excluded_allergens=["AN", "AP"],  # GS1: tree nuts, peanuts
-            exclude_may_contain=True,
-            require_allergen_data=True,
-        ),
-        substitution=SubstitutionPolicy(relaxable_preferences=["brand"]),
-        approver="sari.virtanen",
-        approver_name="Sari Virtanen",
     ),
 }
 

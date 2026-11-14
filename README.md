@@ -6,7 +6,7 @@ How a food-service wholesaler can let outside purchasing agents order safely. Th
   get a **signed offer** (fixed prices, 15 minutes), and place an order. Valio Aimo does not trust the agent: it
   checks the buyer's signed mandate, the agent's signature, the hard limits and, above the agent's limits, a
   person's signed approval, before it confirms with a signed confirmation. REST with OpenAPI docs, plus MCP.
-- **A buyer's purchasing agent and console** (`app/`): a hotel and a school kitchen. The agent reads a request,
+- **A buyer's purchasing agent and console** (`app/`): Bistro Satama, a Helsinki restaurant. The agent reads a request,
   works with the gateway over HTTP only, plans the cheapest option that meets the requirements, and orders it
   within its mandate, asks the named approver, or refuses. The console shows every message between the two
   sides as it happens.
@@ -23,7 +23,7 @@ cp .env.example .env                                         # then fill in VALI
 .venv/Scripts/python -m scripts.dev                          # gateway on :8100, console on :8000
 ```
 
-Open http://127.0.0.1:8000. You are signed in as Aino (head chef, hotel) and land on the kitchen's **supplies
+Open http://127.0.0.1:8000. You are signed in as Aino (head chef, Bistro Satama) and land on the kitchen's **supplies
 dashboard**: stock for items from every supplier, four weeks of history, when each item runs out, and the
 deliveries on the way. Open an item for its stock chart and forecast, its levels, and to record an order placed
 elsewhere. Counts can be typed in, imported from any kitchen system's CSV export, or pushed to
@@ -34,15 +34,14 @@ Automatic reordering is an add-on per item, for suppliers with an ordering gatew
 ("Agent asks first" items go to the purchasing manager). The agent panel on the right shows what it is doing; click
 a request to watch it work with Valio Aimo, or ask it for something one-off.
 
-Switch to Mikko (purchasing manager) in the sidebar to approve, to set levels and automatic reordering, and to change
+Switch to Mikko (restaurant manager) in the sidebar to approve, to set levels and automatic reordering, and to change
 the **purchasing rules**: review the difference, sign a new mandate version, and Valio Aimo refuses the old one from
-then on. When Mikko keeps approving similar orders, the rules page suggests a higher limit. Sari runs the school
-kitchen, whose mandate forbids nuts. Valio Aimo's API docs are at http://127.0.0.1:8100/docs.
+then on. When Mikko keeps approving similar orders, the rules page suggests a higher limit. Valio Aimo's API docs are at http://127.0.0.1:8100/docs.
 
 `.venv/Scripts/python -m scripts.reset` (services stopped) starts the demo afresh: empty databases, version 1
 mandates, fresh stock with new history. Keys are kept.
 
-- One request from the terminal (gateway running): `.venv/Scripts/python -m app.cli --buyer school "..."`
+- One request from the terminal (gateway running): `.venv/Scripts/python -m app.cli --buyer bistro "..."`
 - MCP (gateway running): `.venv/Scripts/python -m gateway.mcp_server`; config snippet in `gateway/mcp_server.py`
 - `LLM_PROVIDER=none` in `.env` skips the LLM (faster; rule-based parser only)
 - Tests: `.venv/Scripts/python -m pytest -q`

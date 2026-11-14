@@ -8,12 +8,12 @@ signed, and Valio Aimo checks those limits again itself. People step in only whe
 1. Stop the services, then reset the demo data (empty databases, version 1 mandates, fresh stock):
    `.venv/Scripts/python -m scripts.reset`
 2. Start both sides: `.venv/Scripts/python -m scripts.dev` (console on :8000, Valio Aimo gateway on :8100).
-3. Open http://127.0.0.1:8000 in a wide browser window. You are Aino, head chef at the hotel.
+3. Open http://127.0.0.1:8000 in a wide browser window. You are Aino, head chef at Bistro Satama.
 4. Optional: open a second tab on http://127.0.0.1:8100/docs to show Valio Aimo's own API.
 5. Dry run once: press **Next day** until a Valio Aimo item drops below its reorder level and the agent orders it,
    then reset again so the live run is fresh. Note which item it was.
 
-Hotel limits in mandate version 1: the agent orders alone up to €2,500 per order (€8,000 per week); a person
+The bistro's limits in mandate version 1: the agent orders alone up to €2,500 per order (€8,000 per week); a person
 approves up to €10,000; anything above is refused.
 
 ## Beats

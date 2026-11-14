@@ -22,6 +22,7 @@ from app.models import (
     Unit,
 )
 from app.policy import RULE_IDS, evaluate
+from tests.conftest import NUT_FREE
 
 AUTO, HUMAN, REJECT = Decision.AUTO_APPROVE, Decision.NEEDS_HUMAN, Decision.REJECT
 NOW = datetime(2026, 11, 13, 10, 0)
@@ -521,40 +522,34 @@ def test_only_the_mandate_changes_the_limit():
 
 # ---------------------------------------------------------------- mandates
 
-@pytest.mark.parametrize("key", ["hotel", "school"])
-def test_demo_mandates_validate_and_round_trip(key):
-    mandate = DEMO_MANDATES[key]
+@pytest.mark.parametrize("mandate", [DEMO_MANDATES["bistro"], NUT_FREE])
+def test_demo_mandates_validate_and_round_trip(mandate):
     assert Mandate.model_validate(mandate.model_dump(mode="json")) == mandate
     assert (mandate.valid_from, mandate.valid_until) == (date(2026, 11, 1), date(2026, 12, 31))
     assert mandate.limits.per_order_auto_eur < mandate.limits.per_order_max_eur
 
 
 def test_demo_mandate_values():
-    hotel, school = DEMO_MANDATES["hotel"], DEMO_MANDATES["school"]
-    assert hotel.mandate_id == "mandate-hotel-001"
-    assert hotel.limits == SpendLimits(per_order_auto_eur=2500, per_order_max_eur=10000,
-                                       per_week_auto_eur=8000)
-    assert hotel.allowed_categories is None
-    assert hotel.hard_constraints == HardConstraints()
-    assert hotel.substitution.relaxable_preferences == ["brand", "pack_size"]
-    assert school.mandate_id == "mandate-school-001"
-    assert school.limits == SpendLimits(per_order_auto_eur=800, per_order_max_eur=3000,
-                                        per_week_auto_eur=2500)
-    assert school.hard_constraints == HardConstraints(
-        excluded_allergens=["AN", "AP"], exclude_may_contain=True, require_allergen_data=True)
-    assert school.substitution.relaxable_preferences == ["brand"]
-    assert school.bands.min_reliability_auto == 0.95
+    assert list(DEMO_MANDATES) == ["bistro"]
+    bistro = DEMO_MANDATES["bistro"]
+    assert bistro.mandate_id == "mandate-bistro-001" and bistro.buyer_org == "Bistro Satama Oy"
+    assert bistro.limits == SpendLimits(per_order_auto_eur=2500, per_order_max_eur=10000,
+                                        per_week_auto_eur=8000)
+    assert bistro.allowed_categories is None
+    assert bistro.hard_constraints == HardConstraints()
+    assert bistro.substitution.relaxable_preferences == ["brand", "pack_size"]
+    assert bistro.approver == "mikko.laine"
 
 
-def test_school_mandate_refuses_may_contain_nuts_and_hotel_does_not():
+def test_nut_free_mandate_refuses_may_contain_nuts_and_bistro_does_not():
     plan = make_plan([make_line(may_contain=["AN"])])
-    assert run(plan=plan, mandate=DEMO_MANDATES["hotel"]).decision == AUTO
-    result = run(plan=plan, mandate=DEMO_MANDATES["school"])
+    assert run(plan=plan, mandate=DEMO_MANDATES["bistro"]).decision == AUTO
+    result = run(plan=plan, mandate=NUT_FREE)
     assert outcomes(result) == {"hard.allergens": REJECT}
 
 
 def test_canonical_json_is_stable_sorted_and_compact():
-    mandate = DEMO_MANDATES["school"]
+    mandate = NUT_FREE.model_copy(update={"buyer_org": "Kaarinan koulukeittiö (school kitchen)"})
     first = canonical_json(mandate)
     assert first == canonical_json(Mandate.model_validate_json(mandate.model_dump_json()))
     text = first.decode("utf-8")
@@ -565,7 +560,7 @@ def test_canonical_json_is_stable_sorted_and_compact():
 
 
 def test_canonical_json_excludes_signature_fields():
-    mandate = DEMO_MANDATES["hotel"]
+    mandate = DEMO_MANDATES["bistro"]
     signed = mandate.model_copy(update={"signature": "c2ln", "signer_key_id": "key-1"})
     assert canonical_json(signed) == canonical_json(mandate)
     payload = json.loads(canonical_json(signed))
@@ -573,7 +568,7 @@ def test_canonical_json_excludes_signature_fields():
 
 
 def test_canonical_json_changes_when_a_limit_changes():
-    mandate = DEMO_MANDATES["hotel"]
+    mandate = DEMO_MANDATES["bistro"]
     limits = mandate.limits.model_copy(update={"per_order_auto_eur": 99999})
     assert canonical_json(mandate.model_copy(update={"limits": limits})) != canonical_json(mandate)
 

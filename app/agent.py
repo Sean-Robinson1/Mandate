@@ -1,4 +1,4 @@
-"""The hotel's (or school's) purchasing agent.
+"""The restaurant's purchasing agent.
 
   request -> intent -> search Valio Aimo -> signed offer -> plan -> mandate check
           -> order through Valio Aimo, or a person's approval, or a refusal
@@ -25,7 +25,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 import settings as config
-from app import keys, kitchen, planner, policy
+from app import keys, kitchen, menu, planner, policy
 from app.mandates import DEMO_MANDATES
 from app.audit import append_event, lock_chain
 from app.db import Order, Run
@@ -419,6 +419,9 @@ def run(text: str, mandate: Mandate, session: Session, gateway: GatewayClient, l
     # ---- decision: one short transaction under the chain lock
     lock_chain(session)
     with steps.held():
+        if offer is not None and row.supply_id is not None:     # keep what Valio Aimo charged, for Menu & margins
+            menu.record_offer_prices(session, row.supply_id, kitchen.today(session),
+                                     [i.model_dump(mode="json") for i in offer.items], {l.product_id for l in plan.lines})
         ctx = _context(session, mandate, now, review_reason, intent, row.supply_id)
         result = policy.evaluate(intent, plan, mandate, ctx)
         trail.log("policy.evaluated", {**result.model_dump(mode="json"), "week_spend_eur": ctx.week_spend_eur},

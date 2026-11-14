@@ -3,7 +3,7 @@
 Timestamps on runs, steps and orders are ISO-8601 in Helsinki time (the buyer's business clock, used for weekly
 spend). Audit events are stamped in UTC.
 """
-from sqlalchemy import Float, Integer, String, Text, create_engine, inspect, text
+from sqlalchemy import Boolean, Float, Integer, String, Text, create_engine, inspect, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 import settings as config
@@ -41,7 +41,7 @@ class Supply(Base):
     __tablename__ = "supplies"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    org_key: Mapped[str] = mapped_column(String(20), index=True)     # hotel | school
+    org_key: Mapped[str] = mapped_column(String(20), index=True)     # e.g. bistro
     name: Mapped[str] = mapped_column(String(120))
     category: Mapped[str] = mapped_column(String(40), default="")
     storage: Mapped[str] = mapped_column(String(20), default="")     # cold | dry | clean: where it is counted
@@ -89,6 +89,63 @@ class Delivery(Base):
     status: Mapped[str] = mapped_column(String(12), default="EXPECTED")   # EXPECTED | RECEIVED
     reference: Mapped[str] = mapped_column(String(80), default="")
     created_by: Mapped[str] = mapped_column(String(80), default="")
+
+
+class Dish(Base):
+    """One item on a restaurant's menu. The menu price includes VAT, as guests see it."""
+
+    __tablename__ = "dishes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    org_key: Mapped[str] = mapped_column(String(20), index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    course: Mapped[str] = mapped_column(String(20), default="Main")     # Starter | Main | Dessert | Drink
+    menu_price: Mapped[float] = mapped_column(Float)                     # € per portion including VAT
+    target_margin_pct: Mapped[float] = mapped_column(Float, default=70.0)   # gross margin the kitchen aims for
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    updated_by: Mapped[str] = mapped_column(String(80), default="")
+
+
+class RecipeLine(Base):
+    """How much of one stock item one portion of a dish uses, in the item's own unit (L, KG or PCS)."""
+
+    __tablename__ = "recipe_lines"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    dish_id: Mapped[int] = mapped_column(Integer, index=True)
+    supply_id: Mapped[int] = mapped_column(Integer, index=True)
+    quantity: Mapped[float] = mapped_column(Float)                       # e.g. 0.05 (L of cream per portion)
+
+
+class Sale(Base):
+    """Portions of one dish sold on one kitchen day, at the menu price of that day."""
+
+    __tablename__ = "sales"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    dish_id: Mapped[int] = mapped_column(Integer, index=True)
+    day: Mapped[int] = mapped_column(Integer, index=True)
+    portions: Mapped[int] = mapped_column(Integer)
+    menu_price: Mapped[float] = mapped_column(Float)                     # € per portion including VAT
+    source: Mapped[str] = mapped_column(String(20), default="simulated")   # simulated | till
+
+
+class PriceRecord(Base):
+    """A supplier's price for one product that can fill a stock item, seen on one kitchen day.
+
+    `in_use` marks the product the kitchen buys today; other products are alternatives the agent was offered.
+    """
+
+    __tablename__ = "price_records"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    supply_id: Mapped[int] = mapped_column(Integer, index=True)
+    day: Mapped[int] = mapped_column(Integer, index=True)
+    product_id: Mapped[str] = mapped_column(String(40), default="")
+    product_name: Mapped[str] = mapped_column(String(200), default="")
+    unit_price: Mapped[float] = mapped_column(Float)                     # € per stock unit (L, KG, PCS), before VAT
+    in_use: Mapped[bool] = mapped_column(Boolean, default=False)
+    source: Mapped[str] = mapped_column(String(20), default="history")   # history (simulated) | valio (live offer)
 
 
 class SimState(Base):

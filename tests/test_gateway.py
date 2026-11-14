@@ -18,7 +18,7 @@ def offer_for(world, ids=("100001",)) -> dict:
     return body
 
 
-def place(world, offer: dict, units: int, buyer: str = "hotel", *, approval: dict | None = None,
+def place(world, offer: dict, units: int, buyer: str = "bistro", *, approval: dict | None = None,
           mandate: dict | None = None, signer=None, product_id: str = "100001", reference: str = "test"):
     m = world.mandates[buyer]
     order = {"offer_id": offer["offer_id"], "mandate_id": m.mandate_id, "buyer_reference": reference,
@@ -29,7 +29,7 @@ def place(world, offer: dict, units: int, buyer: str = "hotel", *, approval: dic
 
 
 def approval_for(world, units: int, total: float, signer=None, product_id: str = "100001") -> dict:
-    m = world.mandates["hotel"]
+    m = world.mandates["bistro"]
     record = {"trace_id": "t", "mandate_id": m.mandate_id, "approver": m.approver, "approver_name": m.approver_name,
               "decision": "APPROVED", "decided_at": NOW.isoformat(),
               "lines": [{"product_id": product_id, "sales_units": units}], "total_net": total}
@@ -72,7 +72,7 @@ def test_a_resent_order_gets_the_same_confirmation_not_a_second_order(world):
 
 
 def test_mandate_changed_after_signing_is_refused(world):
-    forged = world.mandates["hotel"].model_dump(mode="json")
+    forged = world.mandates["bistro"].model_dump(mode="json")
     forged["limits"]["per_order_auto_eur"] = 1_000_000
     status, body = place(world, offer_for(world), 5000, mandate=forged)
     assert status == 403 and failed(body) == ["mandate.signature"]
@@ -80,7 +80,7 @@ def test_mandate_changed_after_signing_is_refused(world):
 
 def test_mandate_from_an_unregistered_organisation_is_refused(world):
     rogue = Signer.generate("org:rogue")
-    m = world.mandates["hotel"].model_dump(mode="json", exclude={"signature", "signer_key_id"})
+    m = world.mandates["bistro"].model_dump(mode="json", exclude={"signature", "signer_key_id"})
     status, body = place(world, offer_for(world), 100, mandate=sign_document(m, rogue))
     assert status == 403 and failed(body) == ["mandate.signature"]
 
@@ -138,9 +138,9 @@ def test_more_than_available_or_not_offered_is_refused(world):
 
 
 def test_allergen_rules_are_enforced_by_valio_aimo_too(world, monkeypatch):
-    """The school's mandate forbids nuts, including traces. Even if the school's agent tries, the gateway refuses."""
+    """A strict buyer's mandate forbids nuts, including traces. Even if that buyer's agent tries, the gateway refuses."""
     monkeypatch.setattr(catalog, "load_index", lambda: INDEX + [product("200001", "Nut milk", may_contain=["AN"])])
-    status, body = place(world, offer_for(world, ["200001"]), 10, buyer="school", product_id="200001")
+    status, body = place(world, offer_for(world, ["200001"]), 10, buyer="nutfree", product_id="200001")
     assert status == 409 and failed(body) == ["mandate.hard_constraints"]
     assert "may contain AN" in next(c["message"] for c in body["checks"] if not c["ok"])
 
