@@ -145,7 +145,7 @@ def reader_name(parser: str) -> str:
     provider, _, model = parser.removeprefix("llm:").removesuffix("+rules").partition(":")
     if provider == "claude_cli":
         return f"Claude {model.capitalize()}" if model else "Claude"
-    return provider.capitalize()
+    return {"claude": "Claude", "openai": "OpenAI", "codex_cli": "Codex"}.get(provider, provider.capitalize())
 
 
 def describe_intent(intent: IntentSpec) -> str:

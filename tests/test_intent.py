@@ -159,3 +159,22 @@ def test_extract_json_tolerates_chatter_with_braces():
     assert extract_json('```json\n{"a": {"b": 2}}\n```') == {"a": {"b": 2}}
     with pytest.raises(LLMError):
         extract_json("no object {here")
+
+
+def test_llm_provider_selection(monkeypatch):
+    """auto takes the first API key, then a CLI on PATH, else none; codex prefers its CLI; unknown means none."""
+    import settings
+    from app import llm
+    for k in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY"):
+        monkeypatch.setattr(settings, k, "")
+    on_path: set[str] = set()
+    monkeypatch.setattr(llm.shutil, "which", lambda exe: f"/bin/{exe}" if exe in on_path else None)
+    assert llm.pick_provider("auto") == "none" and llm.get_llm("auto") is None
+    assert llm.pick_provider("codex") == "openai"
+    on_path.add("codex")
+    assert llm.pick_provider("auto") == "codex_cli" and llm.pick_provider("codex") == "codex_cli"
+    monkeypatch.setattr(settings, "GEMINI_API_KEY", "g")
+    assert llm.pick_provider("auto") == "gemini"
+    monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "a")
+    assert llm.get_llm("auto").name == "claude:" + settings.ANTHROPIC_MODEL
+    assert llm.pick_provider("Gemini ") == "gemini" and llm.pick_provider("bogus") == "none"

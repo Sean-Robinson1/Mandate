@@ -107,8 +107,10 @@ Each entry: what we assumed, why, and what would replace it in production.
 13. **Product type matching uses a small lexicon** (e.g. "milk" = category 10400, excluding coffee, sour and
     flavoured variants). The most specific phrase wins ("oat milk" is an oat drink). Catalog names must
     contain each product term at the start of a word. Production: a maintained product taxonomy (GS1 GPC).
-14. **Local LLM = Claude Code CLI** (`claude -p`) behind `LLMClient`; Gemini is the alternative and a
-    rule-based parser is the fallback. The LLM only reads requests. Its reading must agree with the rule
+14. **The LLM is swappable** behind `LLMClient` (`LLM_PROVIDER`): Anthropic, OpenAI or Gemini APIs, or the
+    local Claude Code / Codex CLIs; `auto` takes the first with a key or CLI. Any LLM failure falls back to the
+    rule-based parser. Default model IDs (`claude-haiku-5-5`, `gpt-5-mini`, `gemini-2.5-flash`) are assumptions;
+    override them with the `*_MODEL` variables. The LLM only reads requests. Its reading must agree with the rule
     parser on product, quantity, unit and deadline, or a person decides; if only the LLM can read a request,
     a person decides too.
 

@@ -22,9 +22,17 @@ CATALOG_INDEX = Path(os.getenv("CATALOG_INDEX") or ROOT / "data" / "catalog_inde
 # ---- buyer's purchasing agent and console
 GATEWAY_URL = os.getenv("GATEWAY_URL") or "http://127.0.0.1:8100"
 DATABASE_URL = os.getenv("DATABASE_URL") or f"sqlite:///{ROOT / 'junction.db'}"
-# "claude_cli" (local: uses the Claude Code subscription), "gemini", or "none" (rule-based parser only).
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "claude_cli")
-CLAUDE_CLI_MODEL = os.getenv("CLAUDE_CLI_MODEL", "haiku")
+# Which LLM reads requests (see app/llm.py): auto, claude, claude_cli, openai, codex_cli, codex, gemini, none.
+# "auto" picks the first available: ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, claude CLI, codex CLI.
+LLM_PROVIDER = os.getenv("LLM_PROVIDER") or "auto"
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL") or "claude-haiku-5-5"
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL") or "gpt-5-mini"
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL") or "gemini-2.5-flash"
+CLAUDE_CLI_MODEL = os.getenv("CLAUDE_CLI_MODEL") or "haiku"
+CODEX_CLI_MODEL = os.getenv("CODEX_CLI_MODEL", "")          # empty = the Codex CLI's own default
 # Optional link to a product in Valio Aimo's webshop, e.g. "https://<shop>/search?q={gtin}" ({gtin} or {id}).
 VALIO_SHOP_URL = os.getenv("VALIO_SHOP_URL", "")
 # Shared secret a kitchen's own stock system sends to POST /api/stock-counts; unset = that endpoint is off.

@@ -48,7 +48,10 @@ mandates, fresh stock with new history. Keys are kept.
 
 - One request from the terminal (gateway running): `.venv/Scripts/python -m app.cli --buyer school "..."`
 - MCP (gateway running): `.venv/Scripts/python -m gateway.mcp_server`; config snippet in `gateway/mcp_server.py`
-- `LLM_PROVIDER=none` in `.env` skips the LLM (faster; rule-based parser only)
+- LLM that reads requests: `LLM_PROVIDER` in `.env` = `auto` (default: first key or CLI found), `claude`
+  (`ANTHROPIC_API_KEY`), `openai` (`OPENAI_API_KEY`), `gemini` (`GEMINI_API_KEY`), `claude_cli` or `codex_cli`
+  (local CLIs, your own login), `codex` (CLI if installed, else OpenAI key), or `none` (rule-based parser only).
+  Models: `ANTHROPIC_MODEL`, `OPENAI_MODEL`, `GEMINI_MODEL`, `CLAUDE_CLI_MODEL`, `CODEX_CLI_MODEL`
 - Tests: `.venv/Scripts/python -m pytest -q`
 
 Keys are created on first run under `keys/` (git-ignored): `keys/gateway/` is Valio Aimo's private key,
