@@ -27,6 +27,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 import settings as config
+from app import menu
 from app.db import Delivery, Order, Run, SimState, StockLevel, Supply
 
 OPEN = ("WORKING", "DECIDING", "NEEDS_HUMAN", "QUEUED")
@@ -47,6 +48,7 @@ WEEK = {"hotel": (0.9, 0.9, 0.95, 1.0, 1.1, 1.25, 0.9),
         "school": (1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0),
         "restaurant": (0.6, 0.8, 0.9, 1.0, 1.4, 1.5, 0.8)}   # quiet Monday, busy Friday and Saturday
 FLAT = (1.0,) * 7
+STANDING_ORDERS = {"restaurant"}     # kitchens whose other suppliers deliver on a standing order (see standing_orders)
 # shortcut: a suppliers table when kitchens can add their own.
 SUPPLIERS = {
     "Valio Aimo": {"lead_days": 2, "terms": "delivers Mon–Sat, order by 14:00", "contact": "Ordering gateway"},
@@ -80,31 +82,31 @@ DEFAULT_SUPPLIES = {   # name, area, supplier, agent's term, unit, on hand, use,
     # A bistro of ~120 covers a day. Daily use matches the menu's recipes (app/menu.py) at a typical dish mix.
     # Dry goods from Valio Aimo without a product term are ordered by the kitchen itself in the webshop.
     "restaurant": [
-        ("Salmon fillet", "cold", "Valio Aimo", "salmon fillet", "KG", 18, 7.5, 14, 32, "auto", 14.5, 4),
-        ("Cream", "cold", "Valio Aimo", "cream", "L", 22, 7.4, 15, 40, "auto", 3.9, 10),
-        ("Butter", "cold", "Valio Aimo", "butter", "KG", 9, 2, 5, 15, "auto", 8.5, 60),
-        ("Milk", "cold", "Valio Aimo", "milk", "L", 14, 2.6, 8, 24, "auto", 1.0, 7),
-        ("Grated cheese", "cold", "Valio Aimo", "grated cheese", "KG", 5, 1.6, 3, 8, "ask", 11.0, 30),
-        ("Beef mince", "cold", "Lihatalo Oy", "", "KG", 16, 5.4, 12, 30, "off", 9.8, 4),
-        ("Chicken breast", "cold", "Lihatalo Oy", "", "KG", 10, 3, 7, 18, "off", 9.5, 5),
-        ("Reindeer, sliced", "frozen", "Riistatalo Oy", "", "KG", 9, 2.3, 7, 16, "off", 38.0, 0),
-        ("Goat cheese", "cold", "Juustola Oy", "", "KG", 3, 0.5, 2, 5, "off", 21.0, 21),
-        ("Eggs", "cold", "Pelto Produce Oy", "", "PCS", 270, 68, 210, 480, "off", 0.22, 21),
-        ("Potatoes", "dry", "Pelto Produce Oy", "", "KG", 45, 11.8, 35, 90, "off", 0.9, 30),
-        ("Onions", "dry", "Pelto Produce Oy", "", "KG", 8, 1.5, 5, 15, "off", 1.2, 30),
-        ("Lettuce", "cold", "Pelto Produce Oy", "", "KG", 8, 2.5, 7, 16, "off", 4.5, 5),
-        ("Tomatoes", "cold", "Pelto Produce Oy", "", "KG", 5, 1.2, 4, 10, "off", 3.2, 7),
-        ("Beetroot", "cold", "Pelto Produce Oy", "", "KG", 7, 1.5, 5, 14, "off", 1.4, 21),
-        ("Dill", "cold", "Pelto Produce Oy", "", "KG", 1, 0.25, 0.8, 2, "off", 18.0, 5),
-        ("Chanterelles, frozen", "frozen", "Pelto Produce Oy", "", "KG", 5, 0.9, 3, 8, "off", 22.0, 0),
-        ("Blueberries, frozen", "frozen", "Pelto Produce Oy", "", "KG", 5, 0.9, 3, 8, "off", 9.0, 0),
-        ("Lingonberries, frozen", "frozen", "Pelto Produce Oy", "", "KG", 3, 0.45, 2, 5, "off", 7.0, 0),
-        ("Burger buns", "dry", "Leipomo Oy", "", "PCS", 50, 30, 35, 90, "off", 0.45, 3),
-        ("Sourdough bread", "dry", "Leipomo Oy", "", "KG", 2, 0.8, 1.5, 4, "off", 5.5, 3),
-        ("Pasta", "dry", "Valio Aimo", "", "KG", 12, 1.8, 6, 20, "off", 2.4, 0),
-        ("Wheat flour", "dry", "Valio Aimo", "", "KG", 8, 0.6, 4, 15, "off", 0.9, 0),
-        ("Sugar", "dry", "Valio Aimo", "", "KG", 8, 1, 4, 15, "off", 1.3, 0),
-        ("Coffee beans", "dry", "Paahtimo Oy", "", "KG", 4, 0.72, 3, 8, "off", 18.0, 0),
+        ("Salmon fillet", "cold", "Valio Aimo", "salmon fillet", "KG", 18, 7.5, 14, 32, "auto", 14.1, 4),
+        ("Cream", "cold", "Valio Aimo", "cream", "L", 25, 8.2, 17, 45, "auto", 5.4, 10),
+        ("Butter", "cold", "Valio Aimo", "butter", "KG", 10, 2.6, 6, 16, "auto", 10.3, 60),
+        ("Milk", "cold", "Valio Aimo", "milk", "L", 12, 2.5, 7, 16, "auto", 1.6, 7),
+        ("Grated cheese", "cold", "Valio Aimo", "grated cheese", "KG", 5, 1.5, 3, 8, "ask", 7.7, 30),
+        ("Beef mince", "cold", "Lihatalo Oy", "", "KG", 14, 4.9, 11, 18, "off", 11.5, 4),
+        ("Chicken breast", "cold", "Lihatalo Oy", "", "KG", 10, 2.7, 7, 18, "off", 11.0, 5),
+        ("Reindeer, sliced", "frozen", "Riistatalo Oy", "", "KG", 9, 2.2, 7, 16, "off", 52.0, 0),
+        ("Goat cheese", "cold", "Juustola Oy", "", "KG", 5, 0.95, 3.5, 8, "off", 24.0, 21),
+        ("Eggs", "cold", "Pelto Produce Oy", "", "PCS", 330, 81, 250, 570, "off", 0.3, 21),
+        ("Potatoes", "dry", "Pelto Produce Oy", "", "KG", 75, 19, 60, 140, "off", 1.1, 30),
+        ("Onions", "dry", "Pelto Produce Oy", "", "KG", 10, 2, 7, 18, "off", 1.4, 30),
+        ("Lettuce", "cold", "Pelto Produce Oy", "", "KG", 10, 3.2, 8, 18, "off", 6.0, 5),
+        ("Tomatoes", "cold", "Pelto Produce Oy", "", "KG", 5, 1.1, 4, 10, "off", 4.0, 7),
+        ("Beetroot", "cold", "Pelto Produce Oy", "", "KG", 14, 3.4, 12, 28, "off", 1.6, 21),
+        ("Dill", "cold", "Pelto Produce Oy", "", "KG", 0.8, 0.18, 0.6, 1.2, "off", 25.0, 7),
+        ("Chanterelles, frozen", "frozen", "Pelto Produce Oy", "", "KG", 5, 0.9, 3, 8, "off", 28.0, 0),
+        ("Blueberries, frozen", "frozen", "Pelto Produce Oy", "", "KG", 7, 1.3, 4.5, 11, "off", 10.0, 0),
+        ("Lingonberries, frozen", "frozen", "Pelto Produce Oy", "", "KG", 3, 0.45, 2, 5, "off", 8.0, 0),
+        ("Burger buns", "dry", "Leipomo Oy", "", "PCS", 50, 27, 35, 75, "off", 0.6, 3),
+        ("Sourdough bread", "dry", "Leipomo Oy", "", "KG", 4, 2.1, 3, 7, "off", 7.0, 3),
+        ("Pasta", "dry", "Valio Aimo", "", "KG", 12, 1.8, 6, 20, "off", 2.6, 0),
+        ("Wheat flour", "dry", "Valio Aimo", "", "KG", 9, 0.9, 4, 15, "off", 1.0, 0),
+        ("Sugar", "dry", "Valio Aimo", "", "KG", 9, 1.3, 5, 15, "off", 1.4, 0),
+        ("Coffee beans", "dry", "Paahtimo Oy", "", "KG", 4, 0.72, 3, 8, "off", 22.0, 0),
         ("Dishwasher detergent", "clean", "Puhdas Oy", "", "L", 15, 3, 13, 30, "off", 4.2, 0),
     ],
 }
@@ -181,6 +183,7 @@ def seed(session: Session, start: date | None = None) -> None:
     from app import prices                                   # here, not at the top: prices imports kitchen
     prices.seed_history(session)
     session.commit()
+    menu.seed(session)
 
 
 def _seed_history(session: Session, s: Supply, start: date, today_day: int = 1) -> None:
@@ -621,19 +624,48 @@ def next_day(session: Session) -> int:
                                                                            Order.arrives_on_day < day))]
     late += [f"d-{d.id}" for d in session.scalars(select(Delivery).where(Delivery.status == "EXPECTED",
                                                                          Delivery.due_day < day))]
+    # Kitchens that serve a menu take in the morning's deliveries before service. shortcut: the morning crew's
+    # check-in; the other kitchens wait for someone to press "Check in".
+    session.flush()
+    late += [i.key for org in STANDING_ORDERS for i in deliveries(session, org)[0] if i.due and i.key not in late]
     for key in late:
         supply, quantity = _receive(session, key, day, "")
         if supply is not None:
             received[supply.id] = received.get(supply.id, 0.0) + quantity
-    for supply in session.scalars(select(Supply)):
+    supplies = session.scalars(select(Supply)).all()
+    served: dict[int, float] = {}                 # kitchens with a menu use their recipes through the day's service
+    for org in {s.org_key for s in supplies if menu.has_menu(s.org_key)}:
+        stock = {s.id: s.on_hand + received.get(s.id, 0.0) for s in supplies if s.org_key == org}
+        served |= menu.serve(session, org, day, date_of(start, day), WEEK.get(org, FLAT)[date_of(start, day).weekday()],
+                             stock)
+    for supply in supplies:
         got = received.get(supply.id, 0.0)
         stock = supply.on_hand + got
-        used = min(stock, expected_use(supply, date_of(start, day)))
+        use = served[supply.id] if supply.id in served else expected_use(supply, date_of(start, day))
+        used = min(stock, use)
         supply.on_hand = round(stock - used, 2)
         session.add(StockLevel(supply_id=supply.id, day=day, on_hand=supply.on_hand, used=round(used, 2),
                                received=round(got, 2), source="day"))
     session.commit()
+    for org in STANDING_ORDERS:
+        standing_orders(session, org)
     return day
+
+
+def standing_orders(session: Session, org_key: str) -> list[Delivery]:
+    """Items the agent does not order are topped up by the kitchen's standing orders with those suppliers, when
+    they run low and nothing is on the way. shortcut: in a real kitchen the chef or the supplier's rep does this."""
+    day = today(session)
+    out = []
+    for row in sheet(session, org_key):
+        if row.connected or not row.todo or row.suggested <= 0:
+            continue
+        d = Delivery(supply_id=row.supply.id, supplier=row.supply.supplier, quantity=row.suggested, ordered_day=day,
+                     due_day=day + lead_days(row.supply), reference="Standing order", created_by="standing order")
+        session.add(d)
+        out.append(d)
+    session.commit()
+    return out
 
 
 # ---------------------------------------------------------------- changes by people and systems

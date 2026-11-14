@@ -44,6 +44,20 @@ Each entry: what we assumed, why, and what would replace it in production.
     Only five of its items (salmon fillet, cream, butter, milk, grated cheese) are ordered by the agent; Valio Aimo
     dry goods without a product term (pasta, flour, sugar) are ordered by the kitchen in the webshop. A kitchen
     added after the first run is seeded at the current kitchen day, with its own four weeks of history.
+10i. **The restaurant's service is simulated.** "Next day" seats about 120 guests on a normal day (scaled by its
+    week) at lunch and dinner. Every guest takes a main; 35% a starter, 40% a dessert and 50% a coffee, each dish
+    chosen by a fixed popularity weight. Each dish takes its recipe out of stock (after trimming losses), and
+    sells out for the rest of the day when an ingredient runs short. The page plays back a day already computed.
+    Production: the till's (POS) sales export.
+10j. **Recipes, menu prices and portion costs are made up but realistic.** Prices of the agent's Valio Aimo items
+    were set near real offers from the mock API. Once the agent buys an item, its cost per portion uses the
+    price Valio Aimo confirmed. Oil, seasoning and garnish are a fixed amount per dish, not tracked as stock.
+    Food cost is measured against the price before VAT, taken as 13.5% for restaurant food. Allergens per dish
+    come from the kitchen's declaration for each item, plus Valio Aimo's product data for what it delivered.
+10k. **The restaurant's other suppliers deliver on standing orders**: when an item the agent does not order runs
+    low and nothing is on the way, an order for the suggested quantity is recorded, due after the supplier's lead
+    time. The morning's deliveries are taken in before service. Production: the chef's own orders, or a supplier
+    rep's standing order, and the kitchen's delivery check-in.
 10e. **Other suppliers have no ordering gateway**, so their items are tracked but ordered by the kitchen, which
     ticks it off ("Mark as ordered": the suggested quantity, due after the supplier's lead time). Supplier names,
     lead times, delivery days, unit costs and shelf lives are made up. A delivery adds to stock when someone checks

@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Menu · Trusted Trade{% endblock %}
+{% block content %}
+<div class="eyebrow">{{ my_org.buyer_org }} · {{ me.name }}, {{ me.role|lower }}</div>
+<div class="page-head"><h1>Menu</h1></div>
+<p class="lede">What each dish costs to make at today's prices, from its recipe and the kitchen's stock. A healthy
+  food cost is {{ (target[0] * 100)|round|int }}–{{ (target[1] * 100)|round|int }}% of the price before VAT.</p>
+<div class="summary">
+  <span>{{ views|length }} dishes</span>
+  {% if week_pct is not none %}<span>Food cost over the last 7 days <strong>{{ week_pct }}%</strong> · {{ sold }} portions sold</span>
+  {% else %}<span>No sales yet: press <strong>Next day</strong> on Supplies to run a day's service</span>{% endif %}
+</div>
+
+{% for label, items in groups %}
+<section class="card menu-card" aria-labelledby="h-{{ loop.index }}">
+  <div class="card-head"><h2 id="h-{{ loop.index }}">{{ label }}</h2></div>
+  <div class="table-scroll">
+  <table class="dish-table">
+    <colgroup><col class="c-dish"><col class="c-n"><col class="c-n2"><col class="c-n"><col class="c-n"><col class="c-n2"><col class="c-all"></colgroup>
+    <thead><tr>
+      <th>Dish</th><th class="num">Price</th><th class="num">Cost per portion</th><th class="num">Food cost</th>
+      <th class="num">Margin</th><th class="num">Sold, 7 days</th><th>Allergens</th>
+    </tr></thead>
+    <tbody>
+    {% for v in items %}
+      <tr class="dish-row">
+        <td><button type="button" class="dish-toggle" aria-expanded="false" aria-controls="r-{{ v.dish.id }}">
+          <span class="caret" aria-hidden="true"></span>{{ v.dish.name }}</button></td>
+        <td class="num">{{ v.dish.price|eur }}</td>
+        <td class="num">{{ v.cost|eur }}</td>
+        <td class="num"><span class="chip {{ v.tone }}">{{ v.food_cost_pct }}%</span></td>
+        <td class="num">{{ v.margin|eur }}</td>
+        <td class="num">{{ v.sold_week or "–" }}</td>
+        <td>{% for a in v.allergens %}<span class="allergen">{{ ALLERGEN_NAMES.get(a, a) }}</span>{% else %}<span class="muted small">none declared</span>{% endfor %}</td>
+      </tr>
+      <tr class="recipe-row" id="r-{{ v.dish.id }}" hidden>
+        <td colspan="7">
+          <table class="recipe">
+            <thead><tr><th>Ingredient</th><th class="num">Per portion</th><th class="num">From stock</th>
+              <th class="num">Price</th><th class="num">Cost</th></tr></thead>
+            <tbody>
+            {% for i in v.ingredients %}
+              <tr>
+                <td><a class="item-link" href="/supplies/{{ i.supply.id }}">{{ i.supply.name }}</a>
+                  <span class="sub">{{ i.supply.supplier }}</span></td>
+                <td class="num">{{ i.quantity|qty }} {{ i.supply.unit|unit }}</td>
+                <td class="num">{% if i.used != i.quantity %}{{ i.used|round(3)|qty }} {{ i.supply.unit|unit }}
+                  <span class="sub">after trimming</span>{% else %}–{% endif %}</td>
+                <td class="num">{{ i.price.per_unit|eur }}/{{ i.supply.unit|unit }}
+                  <span class="sub">{% if i.price.link %}<a href="/requests/{{ i.price.link }}">{{ i.price.source }}</a>{% else %}{{ i.price.source }}{% endif %}</span></td>
+                <td class="num">{{ i.cost|eur }}</td>
+              </tr>
+            {% endfor %}
+            {% if v.dish.extras %}
+              <tr><td>Oil, seasoning and garnish <span class="sub">not tracked as stock</span></td>
+                <td></td><td></td><td></td><td class="num">{{ v.dish.extras|eur }}</td></tr>
+            {% endif %}
+            </tbody>
+            <tfoot><tr><td colspan="4">Price before VAT {{ v.net_price|eur }} ({{ (vat * 100)|round(1) }}% VAT) · cost {{ v.cost|eur }}</td>
+              <td class="num"><strong>{{ v.food_cost_pct }}%</strong></td></tr></tfoot>
+          </table>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+{% endfor %}
+{% endblock %}
+{% block script %}
+<script>
+  document.addEventListener("click", e => {
+    const b = e.target.closest(".dish-toggle");
+    if (!b) return;
+    const open = b.getAttribute("aria-expanded") !== "true";
+    b.setAttribute("aria-expanded", open);
+    document.getElementById(b.getAttribute("aria-controls")).hidden = !open;
+  });
+</script>
+{% endblock %}

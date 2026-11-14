@@ -109,6 +109,52 @@ class PriceRecord(Base):
     in_use: Mapped[bool] = mapped_column(Boolean, default=False)
     source: Mapped[str] = mapped_column(String(20), default="history")
 
+class Dish(Base):
+    """One dish on a kitchen's menu."""
+
+    __tablename__ = "dishes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    org_key: Mapped[str] = mapped_column(String(20), index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    category: Mapped[str] = mapped_column(String(20))               # starter | main | dessert | drink
+    price: Mapped[float] = mapped_column(Float)                       # menu price, € with VAT
+    weight: Mapped[float] = mapped_column(Float, default=1.0)         # how often it is chosen within its category
+    extras: Mapped[float] = mapped_column(Float, default=0.0)         # € per portion: oil, seasoning, garnish (untracked)
+    active: Mapped[int] = mapped_column(Integer, default=1)
+    position: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class RecipeLine(Base):
+    """One ingredient of one portion: a kitchen supply, in that supply's unit, before trimming losses."""
+
+    __tablename__ = "recipe_lines"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    dish_id: Mapped[int] = mapped_column(Integer, index=True)
+    supply_id: Mapped[int] = mapped_column(Integer, index=True)
+    quantity: Mapped[float] = mapped_column(Float)                    # on the plate, per portion
+    yield_pct: Mapped[float] = mapped_column(Float, default=100.0)    # usable share after peeling and trimming
+
+
+class Sale(Base):
+    """One dish on one ticket during a kitchen day's service. served=0: it had sold out when ordered."""
+
+    __tablename__ = "sales"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    org_key: Mapped[str] = mapped_column(String(20), index=True)
+    day: Mapped[int] = mapped_column(Integer, index=True)
+    ticket: Mapped[int] = mapped_column(Integer)
+    minute: Mapped[int] = mapped_column(Integer)                      # minutes after midnight
+    table_no: Mapped[int] = mapped_column(Integer)
+    covers: Mapped[int] = mapped_column(Integer, default=1)          # guests on the ticket
+    dish_id: Mapped[int] = mapped_column(Integer, index=True)
+    quantity: Mapped[int] = mapped_column(Integer, default=1)
+    price: Mapped[float] = mapped_column(Float, default=0.0)          # € with VAT, per portion, at the time
+    cost: Mapped[float] = mapped_column(Float, default=0.0)           # ingredients per portion, at the time
+    served: Mapped[int] = mapped_column(Integer, default=1)
+
 
 class SimState(Base):
     """The demo's calendar: day 1 is `start`, and the 'next day' button moves it on."""

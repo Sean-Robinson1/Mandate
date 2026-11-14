@@ -1,0 +1,194 @@
+{% extends "base.html" %}
+{% block title %}Service · Trusted Trade{% endblock %}
+{% block content %}
+<div class="eyebrow">{{ my_org.buyer_org }} · {{ me.name }}, {{ me.role|lower }}</div>
+{% if not summary %}
+<div class="page-head"><h1>Service</h1></div>
+<div class="empty-card first">
+  <strong>No service recorded yet.</strong>
+  <p class="small muted">Press <strong>Next day</strong> on <a href="/">Supplies</a>: the day's guests order from the menu,
+    every dish takes its recipe out of stock, and you watch it happen here.</p>
+</div>
+{% else %}
+<div class="page-head">
+  <h1>Service · {{ on.strftime("%A") }} {{ on.day }} {{ on.strftime("%B") }}</h1>
+  <div class="head-actions">
+    {% if days|length > 1 %}
+    <nav class="day-pick" aria-label="Other days">
+      {% for d in days[:7] %}<a href="/service?day={{ d }}" {% if d == day %}aria-current="page"{% endif %}>Day {{ d }}</a>{% endfor %}
+    </nav>
+    {% endif %}
+    {% if is_today %}<form method="post" action="/kitchen/next-day" id="day-form"><button class="btn secondary" id="day-btn">Next day</button></form>{% endif %}
+  </div>
+</div>
+<p class="lede">Every ticket from the till, with each dish's recipe taken out of stock as it is made. A dish
+  sells out when one of its ingredients runs short.</p>
+
+{% if play %}
+<section class="live" id="live" aria-label="Service as it happens">
+  <div class="live-head">
+    <div class="clock" id="clock" aria-live="off">{{ feed.tickets[0].time if feed.tickets else "" }}</div>
+    <div class="live-counts">
+      <span><strong id="c-tickets">0</strong> tickets</span>
+      <span><strong id="c-covers">0</strong> guests</span>
+      <span><strong id="c-takings">€0</strong> takings</span>
+    </div>
+    <button type="button" class="btn secondary" id="skip">Skip to the summary</button>
+  </div>
+  <div class="live-body">
+    <div class="feed" id="feed" aria-live="polite" aria-relevant="additions"></div>
+    <div class="drain">
+      <h2 class="sub-head">Stock during service</h2>
+      {% for w in feed.watch %}
+      <div class="drain-row" data-id="{{ w.id }}">
+        <div class="drain-label"><span>{{ w.name }}</span><span class="drain-qty" data-qty>{{ w.start|qty }} {{ w.unit }}</span></div>
+        <div class="level"><i data-bar style="width: {{ (100 * w.start / w.full)|round(1) }}%"></i>
+          <b style="left: {{ (100 * w.low / w.full)|round(1) }}%" title="Reorder level"></b></div>
+      </div>
+      {% endfor %}
+      <p class="small muted">The mark is each item's reorder level.</p>
+    </div>
+  </div>
+</section>
+{% endif %}
+
+<div id="summary" {% if play %}hidden{% endif %}>
+  {% if started %}<div class="notice ok" role="status">After service the purchasing agent started
+    {{ started }} restock order{{ "s" if started != 1 }} with Valio Aimo. <a href="/">See them on Supplies</a>.</div>{% endif %}
+  <div class="kpis first">
+    <div class="tile"><div class="tile-label">Guests</div><div class="tile-value">{{ summary.covers }}</div>
+      <div class="tile-sub">{{ summary.tickets|length }} tickets</div></div>
+    <div class="tile"><div class="tile-label">Takings</div><div class="tile-value">{{ summary.revenue|eur0 }}</div>
+      <div class="tile-sub">{{ summary.net_revenue|eur0 }} before VAT</div></div>
+    {% set pct = summary.food_cost_pct / 100 %}
+    <div class="tile {{ 'warn' if pct > target[1] }}"><div class="tile-label">Food cost</div>
+      <div class="tile-value">{{ summary.food_cost_pct }}%</div>
+      <div class="tile-sub">{{ summary.food_cost|eur0 }} of ingredients · aim {{ (target[0]*100)|int }}–{{ (target[1]*100)|int }}%</div></div>
+    <div class="tile {{ 'bad' if summary.sold_out }}"><div class="tile-label">Sold out</div>
+      <div class="tile-value">{{ summary.sold_out|length }}</div>
+      <div class="tile-sub">{% if summary.sold_out %}{{ summary.sold_out[0][0] }} at {{ summary.sold_out[0][1] }}{% if summary.sold_out|length > 1 %} and more{% endif %}{% else %}Everything was available all day{% endif %}</div></div>
+  </div>
+
+  <div class="work">
+    <section class="card" aria-labelledby="h-after">
+      <div class="card-head"><h2 id="h-after">After service</h2><a class="small" href="/">Supplies →</a></div>
+      {% for r in low %}
+      <div class="line">
+        <div class="line-main"><a class="item-link" href="/supplies/{{ r.supply.id }}">{{ r.supply.name }}</a> · {{ r.supply.on_hand|qty }} {{ r.unit }} left
+          <span class="sub">Reorder level {{ r.supply.reorder_below|qty }} {{ r.unit }} · {{ r.supply.supplier }}
+            {%- if r.on_order %} · {{ r.on_order|qty }} {{ r.unit }} on the way{% endif %}</span></div>
+        <div class="line-act"><span class="status {{ r.tone }}"><span class="dot"></span>{{ r.status }}</span></div>
+      </div>
+      {% else %}
+      <p class="empty-note">Nothing is below its reorder level.</p>
+      {% endfor %}
+      {% if summary.sold_out %}
+      <h3 class="sub-head">Sold out during service</h3>
+      <ul class="plain">{% for name, at in summary.sold_out %}<li>{{ name }} <span class="muted">at {{ at }}</span></li>{% endfor %}</ul>
+      {% endif %}
+    </section>
+    <div class="side-col">
+      <section class="card" aria-labelledby="h-top">
+        <div class="card-head"><h2 id="h-top">Most ordered</h2><a class="small" href="/menu">Menu →</a></div>
+        <ol class="plain ranked">{% for name, n in summary.top %}<li><span>{{ name }}</span><strong>{{ n }}</strong></li>{% endfor %}</ol>
+      </section>
+      <section class="card" aria-labelledby="h-first">
+        <div class="card-head"><h2 id="h-first">Use first</h2><span class="muted small">Closest use-by dates</span></div>
+        {% for b in use_first %}
+        <div class="arrival two"><div class="line-main">{{ b.supply.name }} · {{ b.quantity|qty }} {{ b.supply.unit|unit }}</div>
+          <span class="small {{ 'bad-text' if b.days_left <= 1 else 'warn-text' }}">{% if b.days_left < 0 %}Past its date{% else %}Best before {{ b.best_before|on }}{% endif %}</span></div>
+        {% else %}<p class="empty-note">Nothing close to its use-by date.</p>{% endfor %}
+      </section>
+    </div>
+  </div>
+
+  <details class="card all-tickets">
+    <summary>All {{ summary.tickets|length }} tickets</summary>
+    <div class="table-scroll"><table>
+      <thead><tr><th>Time</th><th>Table</th><th class="num">Guests</th><th>Dishes</th></tr></thead>
+      <tbody>{% for t in summary.tickets %}
+        <tr><td>{{ "%02d:%02d"|format(t.minute // 60, t.minute % 60) }}</td><td>{{ t.table }}</td><td class="num">{{ t.covers }}</td>
+          <td>{% for name, n in t.items %}{{ n }} × {{ name }}{{ ", " if not loop.last }}{% endfor %}
+            {% if t.sold_out %}<span class="bad-text"> · sold out: {{ t.sold_out|join(", ") }}</span>{% endif %}</td></tr>
+      {% endfor %}</tbody>
+    </table></div>
+  </details>
+</div>
+{% endif %}
+{% endblock %}
+{% block script %}
+{% if summary and play %}
+<script id="feed-data" type="application/json">{{ feed|tojson }}</script>
+<script>
+(() => {
+  const data = JSON.parse(document.getElementById("feed-data").textContent);
+  const feed = document.getElementById("feed"), summary = document.getElementById("summary"), live = document.getElementById("live");
+  const clock = document.getElementById("clock");
+  const stock = Object.fromEntries(data.watch.map(w => [w.id, w.start]));
+  const rows = Object.fromEntries(data.watch.map(w => [w.id, document.querySelector(`.drain-row[data-id="${w.id}"]`)]));
+  const byId = Object.fromEntries(data.watch.map(w => [w.id, w]));
+  const eur = n => "€" + Math.round(n).toLocaleString("en");
+  let tickets = 0, covers = 0, takings = 0, i = 0, timer = null;
+
+  function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; return e; }
+  function show(t) {
+    const card = el("div", "ticket" + (t.out.length ? " has-out" : ""));
+    const head = el("div", "ticket-head");
+    head.append(el("strong", "", t.time), el("span", "", `Table ${t.table} · ${t.covers} guest${t.covers > 1 ? "s" : ""}`));
+    card.append(head);
+    const list = el("ul", "ticket-items");
+    for (const [name, n] of t.items) {
+      list.append(el("li", "", `${n} × ${name}`));
+      takings += (data.prices[name] || 0) * n;
+      for (const [id, q] of Object.entries(data.recipes[name] || {})) {
+        if (id in stock) stock[id] = Math.max(0, stock[id] - q * n);
+      }
+    }
+    card.append(list);
+    for (const name of t.out) card.append(el("div", "sold-out", `${name} sold out: an ingredient ran short`));
+    feed.prepend(card);
+    while (feed.children.length > 30) feed.lastChild.remove();
+    tickets += 1; covers += t.covers;
+    clock.textContent = t.time;
+    document.getElementById("c-tickets").textContent = tickets;
+    document.getElementById("c-covers").textContent = covers;
+    document.getElementById("c-takings").textContent = eur(takings);
+    for (const [id, row] of Object.entries(rows)) {
+      const w = byId[id];
+      row.querySelector("[data-bar]").style.width = (100 * stock[id] / w.full).toFixed(1) + "%";
+      row.querySelector("[data-bar]").classList.toggle("low", stock[id] < w.low);
+      row.querySelector("[data-qty]").textContent = `${(+stock[id].toFixed(2)).toLocaleString("en")} ${w.unit}`;
+    }
+  }
+  function finish() {
+    clearTimeout(timer);
+    while (i < data.tickets.length) show(data.tickets[i++]);
+    for (const [id, row] of Object.entries(rows)) {          // settle on the recorded end of day
+      const w = byId[id];
+      row.querySelector("[data-bar]").style.width = (100 * w.end / w.full).toFixed(1) + "%";
+      row.querySelector("[data-bar]").classList.toggle("low", w.end < w.low);
+      row.querySelector("[data-qty]").textContent = `${w.end.toLocaleString("en")} ${w.unit}`;
+    }
+    document.getElementById("skip").remove();
+    clock.textContent = "Closed";
+    summary.hidden = false;
+    summary.scrollIntoView({behavior: "smooth", block: "start"});
+  }
+  document.getElementById("skip").addEventListener("click", finish, {once: true});
+  const total = 9000, step = data.tickets.length ? total / data.tickets.length : 0;
+  function next() {
+    if (i >= data.tickets.length) { timer = setTimeout(finish, 900); return; }
+    show(data.tickets[i++]);
+    timer = setTimeout(next, step);
+  }
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) finish(); else next();
+  history.replaceState(null, "", location.pathname + "?day={{ day }}");   // a reload shows the summary, not a replay
+})();
+</script>
+{% endif %}
+<script>
+  document.getElementById("day-form")?.addEventListener("submit", () => {
+    const b = document.getElementById("day-btn"); b.disabled = true; b.textContent = "Next day…";
+  });
+</script>
+{% endblock %}

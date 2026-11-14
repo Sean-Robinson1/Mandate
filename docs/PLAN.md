@@ -40,8 +40,8 @@ where possible to avoid merge conflicts.
 | # | Item | Main files | Owner | Status |
 |---|------|-----------|-------|--------|
 | 1 | Restaurant kitchen: person, mandate, keys, supplies, weekly shape | `app/mandates.py`, `app/kitchen.py` (`DEFAULT_SUPPLIES`, `WEEK`), `app/intent.py` (salmon fillet, grated cheese) | Sean + Claude | Done |
-| 2 | Menu & recipes: `Dish`, `RecipeLine` tables, seed ~10 dishes per kitchen, cost per portion, allergens rolled up from product data; Menu page | new `app/menu.py`, `app/db.py`, `app/templates/menu.html` | Sean + Claude | In progress |
-| 3 | Live service on Next day: ticket feed (SSE, like the agent stream), stock drains via recipes, end-of-day summary | `app/menu.py`, `app/kitchen.py` (`next_day`), `app/web.py`, new `app/templates/service.html` | Sean + Claude | Next |
+| 2 | Menu & recipes: `Dish`, `RecipeLine` tables, 11 restaurant dishes, cost per portion (confirmed Valio Aimo price when bought), allergens from declarations + product data; Menu page | `app/menu.py`, `app/db.py`, `app/templates/menu.html` | Sean + Claude | Done |
+| 3 | Live service on Next day: ticket playback (computed, then played over ~9 s), stock drains via recipes, dishes sell out, end-of-day summary; standing orders for non-agent suppliers | `app/menu.py`, `app/kitchen.py` (`next_day`, `standing_orders`), `app/web.py`, `app/templates/service.html` | Sean + Claude | Done |
 | 4 | Food cost page: theoretical vs actual after a count, waste log with reasons (spoiled, over-prep, dropped, returned), food cost % vs 28–35% target | new `app/costs.py`, `app/templates/costs.html` | open | — |
 | 5 | Menu matrix (popularity × margin chart) and price alerts ("cream +8% → carbonara margin now 61%") | `app/charts.py`, `app/templates/menu.html` | open | — |
 | 6 | AI: event booking → order. "40 extra covers tomorrow" → recipes × covers → shortfall → offers → order or approval | `app/intent.py`, `app/agent.py`, `app/menu.py` | open | — |
@@ -52,14 +52,17 @@ where possible to avoid merge conflicts.
 | 12 | Try again: a request the agent did not order (refused, failed, offer changed, declined) can be retried or edited and resent; held back while the same item has a request in progress | `app/agent.py`, `app/web.py`, `app/templates/run.html` | Sam + Claude | Done |
 | 10 | Pitch/demo update: `docs/DEMO.md`, `docs/CHALLENGE_CHECKLIST.md`, `README.md` | docs | open | after 1–6 |
 
-Items 4–9 depend on 2 (recipes). Until it lands, build against the `Dish`/`RecipeLine` shape below.
+Items 4–9 depend on 2 (recipes), which is now in `app/menu.py`: `dishes(session, org, today)` returns each dish
+with its ingredients, prices, cost, food cost % and last week's sales; `day_summary(session, org, day)` returns a
+day's tickets and takings. Sales are in the `sales` table (served=0 marks a dish that had sold out).
 
-## Data shape for item 2 (so others can start)
+Found while testing: on a busy Friday the restaurant runs out of cream, because the agent's reorder level is the
+same every day of the week. Weekend-aware reorder levels would be a good addition to item 9.
+
+## Data shape (as built, `app/db.py`)
 ```
-Dish:       id, org_key, name, category (starter/main/dessert/drink), price_eur, active, position
-RecipeLine: id, dish_id, supply_id, quantity (in the supply's unit, per portion), yield_pct (default 100)
-Sale:       id, org_key, day, minute, table, dish_id, quantity        # written by the live service
-Waste:      id, supply_id, day, quantity, reason, by                  # item 4
+Dish:       id, org_key, name, category (starter/main/dessert/drink), price (with VAT), weight, extras, active, position
+RecipeLine: id, dish_id, supply_id, quantity (supply's unit, per portion), yield_pct
+Sale:       id, org_key, day, ticket, minute, table_no, covers, dish_id, quantity, price, cost, served
+Waste:      id, supply_id, day, quantity, reason, by                  # item 4, not built
 ```
-Helpers in `app/menu.py`: `portion_cost(dish)`, `allergens(dish)`, `use_for_sales(session, org_key, day)`
-(supply_id → quantity used).

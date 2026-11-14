@@ -23,9 +23,9 @@ from sqlalchemy import func, select
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 import settings as config
-from app import agent, charts, keys, kitchen, policy, prices, rules
+from app import agent, charts, keys, kitchen, menu, policy, prices, rules
 from app.audit import AuditEvent, append_event, event_to_dict, events_for_trace, lock_chain, verify_chain
-from app.db import Order, Run, SessionLocal, Step, init_db, wipe
+from app.db import Order, Run, Sale, SessionLocal, StockLevel, Step, init_db, wipe
 from app.gateway_client import GatewayClient, GatewayError
 from app.llm import get_llm
 from app.mandates import PEOPLE
@@ -186,7 +186,8 @@ templates.env.filters.update(eur=eur, qty=qty, when=when, day=day, claim=claim_l
 templates.env.globals.update(
     STOPPED=kitchen.STOPPED, kitchen_short=kitchen.short_name, lead=kitchen.lead_days,
     supplier_contact=lambda name: kitchen.SUPPLIERS.get(name, {}).get("contact", ""))
-templates.env.globals.update(STATUS=STATUS, ALLERGEN_NAMES=ALLERGEN_NAMES, PEOPLE=PEOPLE, reader=agent.reader_name)
+templates.env.globals.update(STATUS=STATUS, ALLERGEN_NAMES=ALLERGEN_NAMES, PEOPLE=PEOPLE, reader=agent.reader_name,
+                             has_menu=menu.has_menu)
 
 
 # ---------------------------------------------------------------- who is using the console
@@ -609,10 +610,62 @@ def next_day(request: Request):
     me = current_person(request)
     with SessionLocal() as s:
         before = _delivered_count(s, my_mandate_id(me))
-        kitchen.next_day(s)
+        new_day = kitchen.next_day(s)
         delivered = _delivered_count(s, my_mandate_id(me)) - before
     started = {org_key: len(start_restocks(org_key)) for org_key in MANDATES}
+    if menu.has_menu(me.org_key):                 # watch the day's service, then its summary
+        return RedirectResponse(f"/service?day={new_day}&play=1&started={started[me.org_key]}", status_code=303)
     return RedirectResponse(f"/?delivered={delivered}&started={started[me.org_key]}", status_code=303)
+
+
+@app.get("/menu", include_in_schema=False)
+def menu_page(request: Request):
+    me = current_person(request)
+    with SessionLocal() as s:
+        day = kitchen.today(s)
+        views = menu.dishes(s, me.org_key, today=day)
+    sold = sum(v.sold_week for v in views)
+    cost = sum(v.cost * v.sold_week for v in views)
+    net = sum(v.net_price * v.sold_week for v in views)
+    groups = [(label, [v for v in views if v.dish.category == key]) for key, label in menu.CATEGORIES.items()]
+    return page(request, "menu.html", active="menu", groups=[g for g in groups if g[1]], views=views, sold=sold,
+                week_pct=round(100 * cost / net, 1) if net else None, target=menu.FOOD_COST_TARGET, vat=menu.VAT)
+
+
+@app.get("/service", include_in_schema=False)
+def service_page(request: Request, day: int | None = None, play: int = 0, started: int = 0):
+    me = current_person(request)
+    if not menu.has_menu(me.org_key):
+        raise HTTPException(404, "this kitchen has no menu")
+    with SessionLocal() as s:
+        today_day, start = kitchen.calendar(s)
+        day = day or menu.last_service_day(s, me.org_key)
+        summary = menu.day_summary(s, me.org_key, day) if day else None
+        rows = kitchen.sheet(s, me.org_key, agent.approver_name(MANDATES[me.org_key]))
+        views = menu.dishes(s, me.org_key)
+        levels = {l.supply_id: l for l in s.scalars(select(StockLevel).where(
+            StockLevel.supply_id.in_([r.supply.id for r in rows]), StockLevel.day == day))} if day else {}
+        days = sorted(set(s.scalars(select(Sale.day).where(Sale.org_key == me.org_key))), reverse=True)
+        first = kitchen.use_first(s, me.org_key)
+    if summary is None:
+        return page(request, "service.html", active="service", summary=None, days=days)
+    # The ingredients that moved most in value today, as bars that drain while the tickets play.
+    by_id = {r.supply.id: r for r in rows}
+    moved = sorted((l for l in levels.values() if l.used > 0 and l.supply_id in by_id),
+                   key=lambda l: -l.used * (by_id[l.supply_id].supply.unit_cost or 0))[:8]
+    watch = [{"id": l.supply_id, "name": by_id[l.supply_id].supply.name, "unit": by_id[l.supply_id].unit,
+              "start": round(l.on_hand + l.used, 2), "end": l.on_hand,
+              "low": by_id[l.supply_id].supply.reorder_below,
+              "full": max(by_id[l.supply_id].supply.order_up_to, l.on_hand + l.used)} for l in moved]
+    recipes = {v.dish.name: {i.supply.id: i.used for i in v.ingredients} for v in views}
+    prices_now = {v.dish.name: v.dish.price for v in views}
+    tickets = [{"n": t.number, "time": menu.clock(t.minute), "table": t.table, "covers": t.covers,
+                "items": t.items, "out": t.sold_out} for t in summary.tickets]
+    low = [r for r in rows if r.supply.on_hand < r.supply.reorder_below]     # even if a delivery is on the way
+    return page(request, "service.html", active="service", summary=summary, day=day, days=days,
+                on=kitchen.date_of(start, day), is_today=day == today_day, play=bool(play), started=started,
+                feed={"tickets": tickets, "watch": watch, "recipes": recipes, "prices": prices_now},
+                low=low, use_first=first, target=menu.FOOD_COST_TARGET)
 
 
 def start_restocks(org_key: str) -> list[str]:

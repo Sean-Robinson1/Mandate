@@ -15,6 +15,10 @@
     <nav class="nav" aria-label="Main">
       <a href="/" {% if active == "supplies" %}aria-current="page"{% endif %}>Supplies</a>
       <a href="/prices" {% if active == "prices" %}aria-current="page"{% endif %}>Prices</a>
+      {% if has_menu(me.org_key) %}
+      <a href="/menu" {% if active == "menu" %}aria-current="page"{% endif %}>Menu</a>
+      <a href="/service" {% if active == "service" %}aria-current="page"{% endif %}>Service</a>
+      {% endif %}
       <a href="/approvals" {% if active == "approvals" %}aria-current="page"{% endif %}>Approvals
         {% if pending %}<span class="count">{{ pending }}</span>{% endif %}</a>
       <a href="/activity" {% if active == "activity" %}aria-current="page"{% endif %}>Activity</a>
