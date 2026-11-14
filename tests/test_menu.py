@@ -109,7 +109,7 @@ def test_stock_that_would_be_wasted_gets_a_special_that_sells_it(db):
         idea = ideas[0]
         assert idea.price < idea.dish.dish.price and idea.margin > 0          # discounted, never below cost
         menu.start_special(s, "restaurant", idea.dish.dish.id, idea.pct, idea.days, "test", "jussi.heikkinen")
-        assert all(i.dish.dish.id != idea.dish.dish.id for i in menu.special_ideas(s, "restaurant"))
+        assert all(i.supply.id != idea.supply.id for i in menu.special_ideas(s, "restaurant"))   # no second salmon idea
         kitchen.next_day(s)
         sold = s.scalars(select(Sale).where(Sale.dish_id == idea.dish.dish.id, Sale.day == kitchen.today(s))).all()
         assert sold and all(x.price == idea.price for x in sold)

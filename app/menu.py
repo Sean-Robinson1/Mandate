@@ -353,6 +353,7 @@ def special_ideas(session: Session, org_key: str) -> list[SpecialIdea]:
     day, start = kitchen.calendar(session)
     views = [v for v in dishes(session, org_key, day) if v.dish.active]
     running = {dish_id for d in range(day, day + 8) for dish_id in active_specials(session, org_key, d)}
+    covered = {i.supply.id for v in views if v.dish.id in running for i in v.ingredients}   # a special already uses it up
     leftover: dict[int, tuple[Supply, float, int]] = {}
     for supply, qty, binned in kitchen.waste_forecast(session, org_key):
         _, total, first = leftover.get(supply.id, (supply, 0.0, binned))
@@ -361,7 +362,7 @@ def special_ideas(session: Session, org_key: str) -> list[SpecialIdea]:
     for s, surplus, binned in leftover.values():
         surplus = round(surplus, 2)
         at_risk = round(surplus * (s.unit_cost or 0), 2)
-        if at_risk < SPECIAL_MIN_AT_RISK:
+        if at_risk < SPECIAL_MIN_AT_RISK or s.id in covered:
             continue
         days = max(1, binned + 1 - day)                       # service days before the closing check bins it
         users = [(v, sum(i.used for i in v.ingredients if i.supply.id == s.id)) for v in views]
