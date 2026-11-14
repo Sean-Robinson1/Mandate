@@ -1,44 +1,78 @@
-# 3-minute demo script
+# 5-minute demo script
 
-The story: a kitchen's purchasing agent orders from Valio Aimo on its own, but only inside limits the buyer has
-signed, and Valio Aimo checks those limits again itself. People step in only where the rules say they must.
+The story: one day at Bistro Lumo. The kitchen dashboard shows what to order and what is about to be wasted; the
+purchasing agent orders from Valio Aimo on its own, but only inside limits the owner signed, and Valio Aimo checks
+those limits again itself. People step in only where the rules say they must.
+
+Two people present: one drives, one talks. Practise the person switches; that is where time goes.
 
 ## Setup (before the judges arrive)
 
-1. Stop the services, then reset the demo data (empty databases, version 1 mandates, fresh stock):
+1. Stop the services and reset the demo data (empty databases, version 1 rules, fresh stock):
    `.venv/Scripts/python -m scripts.reset`
-2. Start both sides: `.venv/Scripts/python -m scripts.dev` (console on :8000, Valio Aimo gateway on :8100).
-3. Open http://127.0.0.1:8000 in a wide browser window. You are Aino, head chef at the hotel.
-4. Optional: open a second tab on http://127.0.0.1:8100/docs to show Valio Aimo's own API.
-5. Dry run once: press **Next day** until a Valio Aimo item drops below its reorder level and the agent orders it,
-   then reset again so the live run is fresh. Note which item it was.
+2. Start both sides: `.venv/Scripts/python -m scripts.dev`. It prints three links: the console (:8000), Valio
+   Aimo's gateway (:8100) and Valio Aimo's operator page (`/operator?token=…`).
+3. Browser tab 1: http://127.0.0.1:8000. In the sidebar, sign in as **Elina Mäkinen · Head chef** (Bistro Lumo).
+4. Browser tab 2: the operator link from step 2 (Valio Aimo's screen for pausing an agent).
+5. Dry run the whole script once, then reset and restart again so the live run starts fresh. Note the real
+   amounts the agent quotes, so you are not surprised on stage.
+6. If the AI is slow or offline, set `LLM_PROVIDER=none` in `.env` and restart: the rule-based reader handles every
+   request in this script.
 
-Hotel limits in mandate version 1: the agent orders alone up to €2,500 per order (€8,000 per week); a person
-approves up to €10,000; anything above is refused.
+Bistro Lumo's rules (version 1): the agent orders alone up to **€600 per order** and €2,500 a week; Jussi Heikkinen
+(owner) approves up to €3,000 per order; above that nothing is ordered, even with approval.
+
+What a fresh start shows: the morning count found cream and grated cheese low, and yesterday's delivery brought
+too much salmon and lettuce, so both have a waste alert.
 
 ## Beats
 
 | Time | Click | Say |
 |---|---|---|
-| 0:00–0:30 | Stay on **Supplies**. Point at **To order** (grouped by supplier; the Valio Aimo group says "Ordered by the purchasing agent"), **Arriving**, **Use first**, then **Stock by storage area**. | "This is the kitchen's real job: what we have, what runs out, what to order, and from whom; the agent is just one helper on the Valio Aimo group." |
-| 0:30–1:00 | Press **Next day**. The Valio Aimo line changes to "Agent is ordering"; click it. | "A day of stock was used, milk dropped below its reorder level, and the agent reordered it by itself because the order is inside the limits our purchasing manager signed." |
-| 1:00–1:30 | On the request page, show the verdict ("Ordered") and scroll to **How it happened**: the agent's steps on one side, Valio Aimo's on the other. Open the offer step. | "Every message between the two sides is here: Valio Aimo signed the offer with fixed prices for 15 minutes, the agent signed the order, and Valio Aimo checked our mandate again before confirming." |
-| 1:30–2:05 | Back on Supplies, ask the agent panel for a large one-off order (for example "1,000 litres of lactose-free milk by Monday", which costs more than €2,500). Show "Needs Mikko's approval" with the reasons. Switch person to **Mikko** in the sidebar and press **Approve and order**. | "Over its limit the agent may not order alone, so it asks the purchasing manager named in the mandate; Mikko's approval is signed with his own key, and Valio Aimo verifies that signature too." |
-| 2:05–2:40 | As Mikko, open **Purchasing rules**. Point at the suggestion (or press **Change rules**), raise the order limit, **Review the difference**, sign. Show "Version 2 signed and sent to Valio Aimo". | "Changing the rules is a signed new version, not a setting: Valio Aimo now holds version 2 and refuses anything signed under version 1." |
-| 2:40–3:00 | Point at **Audit log intact** in the sidebar, open **Audit log** ("Chain verified"). | "Everything that happened, by the agent, by people, and by Valio Aimo, is in an append-only, hash-chained log, so any change to history shows up immediately." |
+| 0:00–0:30 | Tab 1, **Supplies**, still as Elina. Open the **Search the catalog yourself** tab and search `lactose free milk`. The first result is a chocolate milk drink. | "Restaurants bin 4 to 10% of the food they buy, and ordering eats hours. Today a buyer searches a webshop and gets this. An AI could do better, but why would anyone let one spend money?" |
+| 0:30–1:15 | Point at the agent's suggestion card (cream and grated cheese run low), press **Order all**. Then point at the waste alert below it: 24 kg of salmon passes its date on Tuesday, about €341 in the bin. Note it says "Jussi decides menu prices". | "The morning count found two items low; the agent orders cream by itself. Grated cheese is set to 'ask first', so it waits for Jussi. And here the kitchen is about to throw away €341 of salmon. The numbers come from code: stock, use-by dates, the week's usual sales." |
+| 1:15–1:45 | Switch to **Ask the agent**. Type `We need 150 litres of cream by Tuesday` and **Send to the agent**. Open the request: it waits for Jussi, with the reasons. | "Over €600 the agent may not order alone. It still did the work: found the product, checked allergens, got a price Valio Aimo signed, and it tells Jussi exactly why it is asking." |
+| 1:45–2:30 | Switch person to **Jussi Heikkinen · Owner**. Open **Approvals**: the cream order shows the price against what we usually pay, why the agent asked, when it arrives, and which dishes use it. **Approve and order**. Back on **Supplies**, press **Run the special** on the salmon alert. | "Jussi decides in one screen, and his approval is signed with his own key; Valio Aimo checks that signature too. Then the waste alert: pan-fried salmon at €21.60 instead of €27 for four days uses up the salmon, and every portion still earns money." |
+| 2:30–3:15 | Open **Try to cheat**, press **Run the cheating agent**. Seven tricks: an edited price, a reused offer, raised limits, the agent approving its own order, and more. Each one is refused with Valio Aimo's reason. | "Now assume the agent is broken or hacked. Valio Aimo doesn't trust it: every trick fails, and the reason comes from Valio Aimo's side, not ours." |
+| 3:15–3:50 | Tab 2, Valio Aimo's operator page: **Pause agent** on Bistro Lumo with a reason. Tab 1: ask the agent for `20 litres of milk by Tuesday`. The request says it couldn't order: Valio Aimo paused this agent. Tab 2: **Resume**. | "And Valio Aimo has the off switch. Whatever our rules allow, Valio Aimo can stop an agent instantly, and the kitchen sees why in plain words." |
+| 3:50–4:30 | Tab 1, **Supplies**: press **Next day**. Service plays, deliveries come in, the salmon special sells. Open **Food cost** ("Food cost and waste"). | "A day passes. The waste page shows what the kitchen throws away against the 4% a well-run kitchen aims for, what it costs a week, and where it comes from: quiet days, salmon, one cancelled group." |
+| 4:30–5:00 | Point at **Audit log intact** in the sidebar, open **Audit log** ("Chain verified"). | "Any agent can order from Valio Aimo, but only within rules a person signed, and every step, by the agent, by people and by Valio Aimo, is in a log that shows any change to history." |
 
-If time is short, skip the rules beat; the approval and the audit log carry the trust story.
+## If time is short
+
+- Skip running **Try to cheat** live: run it in the dry run and show the finished results.
+- Skip **Next day**: open **Food cost** straight away; it already has two weeks of history.
+- Skip the pause beat last; it is the cheapest to describe in one sentence.
+
+## Optional beat: changing the rules (+40 s)
+
+As Jussi, open **Purchasing rules**, press **Change rules**, raise the agent's own limit, **Review the
+difference**, sign. "Changing the rules is a signed new version, not a setting: Valio Aimo now holds version 2 and
+refuses anything signed under version 1." Doing this before **Try to cheat** also lets its "old rules" trick run
+(otherwise that one is skipped and says why).
 
 ## Likely judge questions
 
 **What stops the AI from ordering something it shouldn't?**
-The language model only reads the request. Every yes, ask, or no comes from fixed, tested code reading the signed
-mandate, and Valio Aimo runs its own checks on the same mandate before it accepts an order.
+The language model only reads the request. Every order, ask or stop comes from fixed, tested code reading the
+signed rules, and Valio Aimo runs its own checks on the same rules before it accepts an order.
+
+**What happens when the agent can't order?**
+If a person could allow it (a higher price, a late delivery, more than usual), it asks the approver and says why.
+If nobody could (an excluded allergen, above the per-order maximum, nothing arrives in time, a passed cut-off), it
+says it couldn't order, explains why and suggests the next step.
 
 **Why would Valio Aimo trust an outside agent at all?**
-It doesn't have to. Each order carries the buyer's signed mandate, the agent's signature and, above the agent's
-limits, the approver's signature. Valio Aimo checks all of them and the hard limits, and refuses old mandate versions.
+It doesn't have to. Each order carries the buyer's signed rules, the agent's signature and, above the agent's
+limits, the approver's signature. Valio Aimo checks all of them, refuses old rule versions, and can pause any agent.
+
+**Does the special really cut waste?**
+The suggestion is worked out from stock, use-by dates and the usual week. In the simulation a dish on special sells
+2.5 times as often, which is our assumption (there is no price-response data); see `ASSUMPTIONS.md`.
 
 **What is real and what is simulated?**
-Prices and availability come from the challenge's Valio Aimo API. Stock use per day, deliveries and the two
-kitchens are simulated; everything assumed is listed in `ASSUMPTIONS.md`.
+Products, prices and availability come from the challenge's Valio Aimo API. The kitchens, their sales, stock use,
+waste and other suppliers' deliveries are simulated; everything assumed is listed in `ASSUMPTIONS.md`.
+
+**Which AI does it use?**
+Whichever `.env` names: Claude, OpenAI/Codex or Gemini, or none at all. The safety does not depend on the model.
