@@ -99,3 +99,17 @@ def test_a_price_rise_shows_which_dishes_lose_margin(db):
     cream = impact["Cream"]                                               # seeded +12% three days ago
     assert cream["rising"] and {d["dish"] for d in cream["dishes"]} >= {"Crème brûlée", "Chanterelle pasta"}
     assert all(d["after"] < d["before"] for d in cream["dishes"]) and cream["week"] > 0
+
+
+def test_stock_that_would_be_wasted_gets_a_special_that_sells_it(db):
+    with db.buyer_db() as s:
+        kitchen.demo_start(s)                                       # yesterday's delivery brought too much salmon
+        ideas = menu.special_ideas(s, "restaurant")
+        assert ideas and ideas[0].supply.name == "Salmon fillet" and ideas[0].at_risk >= menu.SPECIAL_MIN_AT_RISK
+        idea = ideas[0]
+        assert idea.price < idea.dish.dish.price and idea.margin > 0          # discounted, never below cost
+        menu.start_special(s, "restaurant", idea.dish.dish.id, idea.pct, idea.days, "test", "jussi.heikkinen")
+        assert all(i.dish.dish.id != idea.dish.dish.id for i in menu.special_ideas(s, "restaurant"))
+        kitchen.next_day(s)
+        sold = s.scalars(select(Sale).where(Sale.dish_id == idea.dish.dish.id, Sale.day == kitchen.today(s))).all()
+        assert sold and all(x.price == idea.price for x in sold)

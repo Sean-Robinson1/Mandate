@@ -39,7 +39,7 @@ def test_price_is_compared_with_the_recent_average_paid(db):
         b = review.brief(s, run, plan, intent, db.mandates["restaurant"])
     assert b.price == 5.5 and b.usual == pytest.approx(7.67, abs=0.01)
     assert b.diff_pct < 0 and b.price_tone == "ok" and "below" in b.price_words
-    assert b.on_time and b.supply.name == "Grated cheese" and b.on_hand == 5
+    assert b.on_time and b.supply.name == "Grated cheese" and b.on_hand == 15.5
     assert "Bistro burger and fries" in b.dishes
     assert b.week_spent == 0 and b.week_after == 55.0 and b.order_limit == 600
 

@@ -67,7 +67,7 @@ def test_a_kitchen_added_later_is_seeded_into_an_existing_database_at_today(shee
         kitchen.seed(s, start=NOW.date())
         assert kitchen.due_restocks(s, "restaurant") == []              # starts healthy: nothing to order
     r = rows(sheet_db, "restaurant")
-    assert r["Salmon fillet"].history[-1].day == 2 and r["Salmon fillet"].history[-1].on_hand == 18
+    assert r["Salmon fillet"].history[-1].day == 2 and r["Salmon fillet"].history[-1].on_hand == 35
     assert all(not row.low for row in r.values())
 
 

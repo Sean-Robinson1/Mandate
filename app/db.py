@@ -175,6 +175,21 @@ class Waste(Base):
     at: Mapped[str] = mapped_column(String(40), default="")
 
 
+class Special(Base):
+    """A dish sold at a discount for a few days, to use up stock before it passes its date."""
+
+    __tablename__ = "specials"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    org_key: Mapped[str] = mapped_column(String(20), index=True)
+    dish_id: Mapped[int] = mapped_column(Integer, index=True)
+    pct: Mapped[float] = mapped_column(Float)                         # discount, percent off the menu price
+    from_day: Mapped[int] = mapped_column(Integer)
+    until_day: Mapped[int] = mapped_column(Integer)                   # last kitchen day it runs, inclusive
+    reason: Mapped[str] = mapped_column(String(200), default="")
+    by: Mapped[str] = mapped_column(String(80), default="")
+
+
 class SimState(Base):
     """The demo's calendar: day 1 is `start`, and the 'next day' button moves it on."""
 

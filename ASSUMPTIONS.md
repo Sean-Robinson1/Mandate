@@ -165,3 +165,10 @@ Each entry: what we assumed, why, and what would replace it in production.
 29. **A cheaper equivalent** is another product Valio Aimo offered for the same stock item, priced per the same
     unit, within the last 14 days, and from the same source as the current price. Ordering it goes through the
     agent and the purchasing rules like any request. Recipe and dish impact follows once the menu lands.
+30. **Specials against waste** are suggested when typical use (the weekly shape), taking stock oldest first, would
+    leave at least €25 of a fresh item past its date within a week. The suggested dish is the main that uses most of
+    it, at 20% off (10% if 20% would sell below ingredient cost). A dish on special is picked 2.5 times as often in
+    the simulated service: a made-up figure, as we have no price-response data. A manager starts it; it is audited.
+31. **Demo starting stock** for the restaurant is set from what its recipes actually use over two weeks of
+    simulated service. On the first morning, yesterday's delivery brought 24 kg of salmon and 12 kg of lettuce
+    more than ordered, so the waste alert has something to act on from the start.

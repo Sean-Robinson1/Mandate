@@ -18,6 +18,35 @@
   </div>
 </form>
 {% endfor %}
+{% for i in specials %}
+<form method="post" action="/specials" class="agent-suggestion special" data-suggestion="special-{{ i.supply.id }}-{{ i.best_before }}">
+  <input type="hidden" name="dish_id" value="{{ i.dish.dish.id }}"><input type="hidden" name="pct" value="{{ i.pct|int }}">
+  <input type="hidden" name="days" value="{{ i.days }}">
+  <input type="hidden" name="reason" value="Use up {{ i.surplus|qty }} {{ i.supply.unit|unit }} of {{ i.supply.name|lower }} before {{ i.best_before|on }}">
+  <div class="as-mark" aria-hidden="true">
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg>
+  </div>
+  <div class="as-main">
+    <div class="as-from">Food about to be wasted</div>
+    <p class="as-title">{{ i.surplus|qty }} {{ i.supply.unit|unit }} of {{ i.supply.name|lower }} will pass its date unused on {{ i.best_before|on }} (about {{ i.at_risk|eur0 }} in the bin)</p>
+    <p class="as-body">Normal service won't use it in time. Put {{ i.dish.dish.name|lower }} on special at {{ i.price|eur }} instead of {{ i.dish.dish.price|eur }}
+      for the next {{ i.days }} day{{ "s" if i.days != 1 }}: about {{ i.extra_portions }} extra portions use it up, and each still earns {{ i.margin|eur }} after ingredients.</p>
+    <ul class="as-items">
+      <li><strong>{{ i.pct|int }}% off</strong> {{ i.dish.dish.name|lower }}</li>
+      <li><strong>{{ i.per_portion|qty }} {{ i.supply.unit|unit }}</strong> {{ i.supply.name|lower }} a portion</li>
+    </ul>
+  </div>
+  <div class="as-actions">
+    {% if manager %}<button class="btn">Run the special</button>{% endif %}
+    <button type="button" class="btn ghost" data-dismiss>Not now</button>
+    <span class="as-note">{% if manager %}Runs from tomorrow for {{ i.days }} day{{ "s" if i.days != 1 }}{% else %}{{ approver }} decides menu prices{% endif %}</span>
+  </div>
+</form>
+{% endfor %}
+{% if running_specials %}
+<p class="specials-running small">On special:
+  {% for d, sp, until in running_specials %}<strong>{{ d.name }}</strong> {{ special_price(d.price, sp.pct)|eur }} (was {{ d.price|eur }}) until {{ until|on }}{{ "; " if not loop.last }}{% endfor %}</p>
+{% endif %}
 <div class="work">
   <div class="side-col">
   <section class="card" aria-labelledby="h-order">

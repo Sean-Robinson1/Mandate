@@ -79,35 +79,36 @@ DEFAULT_SUPPLIES = {   # name, area, supplier, agent's term, unit, on hand, use,
         ("Carrots", "cold", "Pelto Produce Oy", "", "KG", 60, 14, 40, 120, "off", 1.1, 21),
         ("Rye bread", "dry", "Leipomo Oy", "", "KG", 45, 12, 30, 80, "off", 4.5, 4),
     ],
-    # A bistro of ~120 covers a day. Daily use matches the menu's recipes (app/menu.py) at a typical dish mix.
+    # A bistro of ~120 covers a day. Daily use is what the menu's recipes (app/menu.py) actually use over two weeks of
+    # service; reorder level covers the supplier's lead time plus a day, 'up to' about a week (less for short shelf life).
     # Dry goods from Valio Aimo without a product term are ordered by the kitchen itself in the webshop.
     "restaurant": [
-        ("Salmon fillet", "cold", "Valio Aimo", "salmon fillet", "KG", 18, 7.5, 14, 32, "auto", 14.1, 4),
-        ("Cream", "cold", "Valio Aimo", "cream", "L", 25, 8.2, 17, 45, "auto", 5.4, 10),
-        ("Butter", "cold", "Valio Aimo", "butter", "KG", 10, 2.6, 6, 16, "auto", 10.3, 60),
-        ("Milk", "cold", "Valio Aimo", "milk", "L", 12, 2.5, 7, 16, "auto", 1.6, 7),
-        ("Grated cheese", "cold", "Valio Aimo", "grated cheese", "KG", 5, 1.5, 3, 8, "ask", 7.7, 30),
-        ("Beef mince", "cold", "Lihatalo Oy", "", "KG", 14, 4.9, 11, 18, "off", 11.5, 4),
-        ("Chicken breast", "cold", "Lihatalo Oy", "", "KG", 10, 2.7, 7, 18, "off", 11.0, 5),
-        ("Reindeer, sliced", "frozen", "Riistatalo Oy", "", "KG", 9, 2.2, 7, 16, "off", 52.0, 0),
-        ("Goat cheese", "cold", "Juustola Oy", "", "KG", 5, 0.95, 3.5, 8, "off", 24.0, 21),
-        ("Eggs", "cold", "Pelto Produce Oy", "", "PCS", 330, 81, 250, 570, "off", 0.3, 21),
-        ("Potatoes", "dry", "Pelto Produce Oy", "", "KG", 75, 19, 60, 140, "off", 1.1, 30),
-        ("Onions", "dry", "Pelto Produce Oy", "", "KG", 10, 2, 7, 18, "off", 1.4, 30),
-        ("Lettuce", "cold", "Pelto Produce Oy", "", "KG", 10, 3.2, 8, 18, "off", 6.0, 5),
-        ("Tomatoes", "cold", "Pelto Produce Oy", "", "KG", 5, 1.1, 4, 10, "off", 4.0, 7),
-        ("Beetroot", "cold", "Pelto Produce Oy", "", "KG", 14, 3.4, 12, 28, "off", 1.6, 21),
-        ("Dill", "cold", "Pelto Produce Oy", "", "KG", 0.8, 0.18, 0.6, 1.2, "off", 25.0, 7),
-        ("Chanterelles, frozen", "frozen", "Pelto Produce Oy", "", "KG", 5, 0.9, 3, 8, "off", 28.0, 0),
-        ("Blueberries, frozen", "frozen", "Pelto Produce Oy", "", "KG", 7, 1.3, 4.5, 11, "off", 10.0, 0),
-        ("Lingonberries, frozen", "frozen", "Pelto Produce Oy", "", "KG", 3, 0.45, 2, 5, "off", 8.0, 0),
-        ("Burger buns", "dry", "Leipomo Oy", "", "PCS", 50, 27, 35, 75, "off", 0.6, 3),
-        ("Sourdough bread", "dry", "Leipomo Oy", "", "KG", 4, 2.1, 3, 7, "off", 7.0, 3),
-        ("Pasta", "dry", "Valio Aimo", "", "KG", 12, 1.8, 6, 20, "off", 2.6, 0),
-        ("Wheat flour", "dry", "Valio Aimo", "", "KG", 9, 0.9, 4, 15, "off", 1.0, 0),
-        ("Sugar", "dry", "Valio Aimo", "", "KG", 9, 1.3, 5, 15, "off", 1.4, 0),
-        ("Coffee beans", "dry", "Paahtimo Oy", "", "KG", 4, 0.72, 3, 8, "off", 22.0, 0),
-        ("Dishwasher detergent", "clean", "Puhdas Oy", "", "L", 15, 3, 13, 30, "off", 4.2, 0),
+        ("Salmon fillet", "cold", "Valio Aimo", "salmon fillet", "KG", 35, 8.5, 25, 38, "auto", 14.1, 4),
+        ("Cream", "cold", "Valio Aimo", "cream", "L", 74, 11.0, 33, 98, "auto", 5.4, 10),
+        ("Butter", "cold", "Valio Aimo", "butter", "KG", 24, 3.0, 9.5, 29, "auto", 10.3, 60),
+        ("Milk", "cold", "Valio Aimo", "milk", "L", 17, 3.0, 9, 19.5, "auto", 1.6, 7),
+        ("Grated cheese", "cold", "Valio Aimo", "grated cheese", "KG", 15.5, 1.8, 5.5, 16.5, "ask", 7.7, 30),
+        ("Beef mince", "cold", "Lihatalo Oy", "", "KG", 19.5, 4.5, 14, 21, "off", 11.5, 4),
+        ("Chicken breast", "cold", "Lihatalo Oy", "", "KG", 12.5, 3.0, 9, 13.5, "off", 11.0, 5),
+        ("Reindeer, sliced", "frozen", "Riistatalo Oy", "", "KG", 14.5, 2.2, 8.5, 22, "off", 52.0, 0),
+        ("Goat cheese", "cold", "Juustola Oy", "", "KG", 9.5, 1.2, 4.5, 12, "off", 24.0, 21),
+        ("Eggs", "cold", "Pelto Produce Oy", "", "PCS", 620, 86, 340, 860, "off", 0.3, 21),
+        ("Potatoes", "dry", "Pelto Produce Oy", "", "KG", 164, 20, 81, 202, "off", 1.1, 30),
+        ("Onions", "dry", "Pelto Produce Oy", "", "KG", 14, 2.0, 8, 20, "off", 1.4, 30),
+        ("Lettuce", "cold", "Pelto Produce Oy", "", "KG", 20, 4.0, 16, 22, "off", 6.0, 5),
+        ("Tomatoes", "cold", "Pelto Produce Oy", "", "KG", 6, 1.0, 4, 7, "off", 4.0, 7),
+        ("Beetroot", "cold", "Pelto Produce Oy", "", "KG", 37, 4.0, 16.5, 42, "off", 1.6, 21),
+        ("Dill", "cold", "Pelto Produce Oy", "", "KG", 1.1, 0.2, 0.7, 1.2, "off", 25.0, 7),
+        ("Chanterelles, frozen", "frozen", "Pelto Produce Oy", "", "KG", 9.5, 1.1, 4.5, 11.5, "off", 28.0, 0),
+        ("Blueberries, frozen", "frozen", "Pelto Produce Oy", "", "KG", 15.5, 1.7, 7, 17.5, "off", 10.0, 0),
+        ("Lingonberries, frozen", "frozen", "Pelto Produce Oy", "", "KG", 4.5, 0.6, 2.2, 5.5, "off", 8.0, 0),
+        ("Burger buns", "dry", "Leipomo Oy", "", "PCS", 80, 26, 50, 90, "off", 0.6, 3),
+        ("Sourdough bread", "dry", "Leipomo Oy", "", "KG", 8, 2.4, 5, 8.5, "off", 7.0, 3),
+        ("Pasta", "dry", "Valio Aimo", "", "KG", 12, 1.9, 6, 17.5, "off", 2.6, 0),
+        ("Wheat flour", "dry", "Valio Aimo", "", "KG", 8, 1.1, 3, 9.5, "off", 1.0, 0),
+        ("Sugar", "dry", "Valio Aimo", "", "KG", 13.5, 1.7, 5, 15.5, "off", 1.4, 0),
+        ("Coffee beans", "dry", "Paahtimo Oy", "", "KG", 6.5, 0.8, 2.4, 7.5, "off", 22.0, 0),
+        ("Dishwasher detergent", "clean", "Puhdas Oy", "", "L", 25, 3.0, 15, 33, "off", 4.2, 0),
     ],
 }
 
@@ -473,6 +474,48 @@ class Batch:
     days_left: int
 
 
+def batches(session: Session, org_key: str) -> dict[int, list[tuple[float, int]]]:
+    """What is on the shelf for each perishable item, as (quantity, day it passes its date), oldest first.
+    Stock is used oldest first, so what is left is the newest deliveries. Items with stock older than our
+    records are left out (no date to give)."""
+    supplies = session.scalars(select(Supply).where(Supply.org_key == org_key, Supply.shelf_days > 0)).all()
+    if not supplies:
+        return {}
+    day, start = calendar(session)
+    received = [i for i in incoming(session, list(supplies), day, start) if i.status == "RECEIVED"]
+    out = {}
+    for s in supplies:
+        left, mine = s.on_hand, []
+        for i in sorted((i for i in received if i.supply.id == s.id), key=lambda i: -i.day):
+            if left <= 1e-9:
+                break
+            mine.append((round(min(left, i.quantity), 2), i.day + s.shelf_days))
+            left -= i.quantity
+        if mine and left <= 1e-9:
+            out[s.id] = mine[::-1]
+    return out
+
+
+def waste_forecast(session: Session, org_key: str, horizon: int = 7) -> list[tuple[Supply, float, int]]:
+    """Stock that typical use will not get through before its date, in the next `horizon` days:
+    (item, quantity left over, day it is binned). Batches are used oldest first at the expected daily use."""
+    day, start = calendar(session)
+    by_id = {s.id: s for s in session.scalars(select(Supply).where(Supply.org_key == org_key))}
+    out = []
+    for supply_id, mine in batches(session, org_key).items():
+        s, queue = by_id[supply_id], [list(b) for b in mine]
+        for d in range(day + 1, day + horizon + 1):
+            need = expected_use(s, date_of(start, d))
+            for b in queue:
+                take = min(b[0], need)
+                b[0], need = b[0] - take, need - take
+            for b in [b for b in queue if b[1] < d]:      # the closing check bins what is past its date
+                if b[0] > 1e-9:
+                    out.append((s, round(b[0], 2), b[1]))
+                queue.remove(b)
+    return out
+
+
 def use_first(session: Session, org_key: str) -> list[Batch]:
     """Perishable stock close to its use-by date: stock is used oldest first, so what is left is the newest
     deliveries, and the oldest of those goes first."""
@@ -519,7 +562,8 @@ class Restock:
 def restock_quantity(row: Row) -> float:
     """Top up to the 'order up to' level, rounded up to a sensible step."""
     s = row.supply
-    step = STEP.get(s.unit, 1)
+    # The usual pack step, but never more than a quarter of the item's level: 1.2 kg of dill is not ordered in 5s.
+    step = next((x for x in (STEP.get(s.unit, 1), 10, 5, 1, 0.5, 0.1) if x <= max(s.order_up_to / 4, 0.1)), 0.1)
     missing = s.order_up_to - s.on_hand - row.on_order
     return float(math.ceil(missing / step) * step) if missing > 0 else 0.0
 
@@ -682,6 +726,9 @@ MORNING_COUNT = {
     "school": ("sari.virtanen", {"Lactose-free milk": 190, "Oat drink": 22}),
     "restaurant": ("elina.makinen", {"Cream": 15, "Grated cheese": 2.5}),
 }
+# ...and yesterday's delivery brought more than was ordered, so some fresh stock will pass its date unless the
+# kitchen sells it: the waste alert and its suggested special have work from the first minute too.
+OVER_DELIVERED = {"restaurant": {"Salmon fillet": 24, "Lettuce": 12}}
 
 
 def demo_start(session: Session) -> bool:
@@ -693,6 +740,13 @@ def demo_start(session: Session) -> bool:
             s = session.scalar(select(Supply).where(Supply.org_key == org, Supply.name == name))
             if s is not None and s.on_hand > value:
                 _record_count(session, s, value, "count", by)
+        for name, extra in OVER_DELIVERED.get(org, {}).items():
+            s = session.scalar(select(Supply).where(Supply.org_key == org, Supply.name == name))
+            if s is not None:
+                session.add(Delivery(supply_id=s.id, supplier=s.supplier, quantity=extra, ordered_day=-lead_days(s),
+                                     due_day=0, received_day=0, status="RECEIVED", reference="Delivered more than ordered",
+                                     created_by="standing order"))
+                _record_count(session, s, round(s.on_hand + extra, 2), "count", by)
     session.commit()
     for org in STANDING_ORDERS:                      # the other suppliers' deliveries are already on their way
         standing_orders(session, org)

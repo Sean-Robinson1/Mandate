@@ -25,7 +25,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 import settings as config
 from app import agent, attacks, charts, costs, keys, kitchen, menu, policy, prices, review, rules
 from app.audit import AuditEvent, append_event, event_to_dict, events_for_trace, lock_chain, verify_chain
-from app.db import Order, Run, Sale, SessionLocal, StockLevel, Step, init_db, wipe
+from app.db import Dish, Order, Run, Sale, SessionLocal, StockLevel, Step, init_db, wipe
 from app.gateway_client import GatewayClient, GatewayError
 from app.llm import get_llm
 from app.mandates import PEOPLE
@@ -376,6 +376,11 @@ def _dashboard(me) -> dict:
         counted = _count_label(kitchen.last_count(s, me.org_key), start)
         first = kitchen.use_first(s, me.org_key)
         other = kitchen.unlinked_orders(s, mandate.mandate_id)
+        ideas = menu.special_ideas(s, me.org_key) if menu.has_menu(me.org_key) else []
+        dish_names = {d.id: d for d in s.scalars(select(Dish).where(Dish.org_key == me.org_key))}
+        running = [(dish_names[sp.dish_id], sp, kitchen.date_of(start, sp.until_day))
+                   for d in (day, day + 1) for sp in menu.active_specials(s, me.org_key, d).values()
+                   if sp.dish_id in dish_names]
     groups = kitchen.to_order(rows)
     with SessionLocal() as s:
         waiting = s.scalars(select(Run).where(Run.mandate_id == mandate.mandate_id, Run.status == "NEEDS_HUMAN")
@@ -388,6 +393,8 @@ def _dashboard(me) -> dict:
             "stock_value": sum(r.value for r in rows), "on_order_value": sum(i.value for i in upcoming),
             "manager": is_manager(me), "busy": any(r.tone == "busy" for r in rows),
             "suggestions": kitchen.suggestions(rows, day), "waiting": waiting,
+            "specials": ideas, "running_specials": list({sp.id: (d, sp, until) for d, sp, until in running}.values()),
+            "special_price": menu.special_price,
             "waiting_total": sum(r.total_net or 0 for r in waiting), "can_approve": me.id == mandate.approver}
 
 
@@ -680,6 +687,23 @@ def set_dish_price(request: Request, dish_id: int, price: str = Form(...), back:
         return RedirectResponse(f"{target}?{urlencode({'error': message})}{anchor}", status_code=303)
     saved = f"{dish.name} now costs {eur(dish.price)} on the menu (was {eur(old)})."
     return RedirectResponse(f"{target}?{urlencode({'saved': saved})}{anchor}", status_code=303)
+
+
+@app.post("/specials", include_in_schema=False)
+def start_special(request: Request, dish_id: int = Form(...), pct: float = Form(...), days: int = Form(...),
+                  reason: str = Form("")):
+    """Run a dish at a discount for a few days to use up stock before its date. Menu prices are the manager's call."""
+    me = current_person(request)
+    if not is_manager(me):
+        raise HTTPException(403, f"only {agent.approver_name(MANDATES[me.org_key])} can put a dish on special")
+    try:
+        with SessionLocal() as s:
+            special = menu.start_special(s, me.org_key, dish_id, pct, days, reason, me.id)
+            dish = s.get(Dish, special.dish_id)
+            price = menu.special_price(dish.price, special.pct)
+    except ValueError as e:
+        return _back(error=str(e)[:1].upper() + str(e)[1:] + ".")
+    return _back(done=f"{dish.name} is on special at {eur(price)} from tomorrow for {days} day{'s' if days != 1 else ''}.")
 
 
 @app.get("/costs", include_in_schema=False)

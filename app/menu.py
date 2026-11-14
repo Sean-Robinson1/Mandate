@@ -21,7 +21,7 @@ from datetime import date, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db import Dish, Order, PriceRecord, RecipeLine, Run, Sale, SimState, Supply
+from app.db import Dish, Order, PriceRecord, RecipeLine, Run, Sale, SimState, Special, Supply
 
 VAT = 0.135                 # shortcut: Finnish VAT on restaurant food; drinks with alcohol differ (none on this menu)
 FOOD_COST_TARGET = (0.28, 0.35)
@@ -29,6 +29,11 @@ FOOD_COST_TARGET = (0.28, 0.35)
 TARGETS = {"starter": 72.0, "main": 70.0, "dessert": 80.0, "drink": 85.0}
 PRICE_STEP = 0.5            # suggested menu prices round up to this
 PRICE_RANGE = (1.0, 200.0)  # a menu price outside this is a typo
+# Specials that use up stock before its date. shortcut: guests pick a dish on special this many times as often
+# (no price elasticity data); see ASSUMPTIONS.md.
+SPECIAL_PCT = 20
+SPECIAL_BOOST = 2.5
+SPECIAL_MIN_AT_RISK = 25.0  # EUR of stock that would be thrown away before a special is worth suggesting
 CATEGORIES = {"starter": "Starters", "main": "Mains", "dessert": "Desserts", "drink": "Drinks"}
 
 # name, category, price € with VAT, weight within its category, extras € per portion (oil, seasoning, garnish:
@@ -308,6 +313,92 @@ def dishes(session: Session, org_key: str, today: int | None = None) -> list[Dis
     return out
 
 
+# ---------------------------------------------------------------- specials against waste
+
+def special_price(price: float, pct: float) -> float:
+    """The discounted menu price, rounded down to 10 cents so it reads like a menu price."""
+    return math.floor(price * (1 - pct / 100) * 10 + 1e-9) / 10
+
+
+def active_specials(session: Session, org_key: str, day: int) -> dict[int, Special]:
+    rows = session.scalars(select(Special).where(Special.org_key == org_key, Special.from_day <= day,
+                                                 Special.until_day >= day).order_by(Special.id))
+    return {r.dish_id: r for r in rows}
+
+
+@dataclass
+class SpecialIdea:
+    supply: Supply
+    best_before: date
+    days: int                   # service days left before it is binned
+    surplus: float              # what normal service will not use in time, in the supply's unit
+    at_risk: float              # EUR of stock that would be thrown away
+    dish: DishView
+    per_portion: float
+    pct: float
+    price: float                # special price, with VAT
+    extra_portions: int
+
+    @property
+    def margin(self) -> float:
+        return round(self.price / (1 + VAT) - self.dish.cost, 2)
+
+
+def special_ideas(session: Session, org_key: str) -> list[SpecialIdea]:
+    """Stock that normal service will not use before its date, and a discounted dish that would use it up.
+
+    Deterministic: the expected use per day (the weekly shape) decides the surplus; a person decides whether to run
+    the special. The discount drops to 10% if 20% would sell the dish below its ingredient cost."""
+    from app import kitchen                                   # here, not at the top: kitchen imports menu
+    day, start = kitchen.calendar(session)
+    views = [v for v in dishes(session, org_key, day) if v.dish.active]
+    running = {dish_id for d in range(day, day + 8) for dish_id in active_specials(session, org_key, d)}
+    leftover: dict[int, tuple[Supply, float, int]] = {}
+    for supply, qty, binned in kitchen.waste_forecast(session, org_key):
+        _, total, first = leftover.get(supply.id, (supply, 0.0, binned))
+        leftover[supply.id] = (supply, total + qty, min(first, binned))
+    out = []
+    for s, surplus, binned in leftover.values():
+        surplus = round(surplus, 2)
+        at_risk = round(surplus * (s.unit_cost or 0), 2)
+        if at_risk < SPECIAL_MIN_AT_RISK:
+            continue
+        days = max(1, binned + 1 - day)                       # service days before the closing check bins it
+        users = [(v, sum(i.used for i in v.ingredients if i.supply.id == s.id)) for v in views]
+        users = [(v, per) for v, per in users if per > 0 and v.dish.id not in running]
+        if not users:
+            continue
+        v, per = max(users, key=lambda u: (u[0].dish.category == "main", u[1]))
+        pct = next((p for p in (SPECIAL_PCT, 10) if special_price(v.dish.price, p) / (1 + VAT) > v.cost), None)
+        if pct is None:
+            continue
+        out.append(SpecialIdea(s, kitchen.date_of(start, binned), days, surplus, at_risk, v, round(per, 3), pct,
+                               special_price(v.dish.price, pct), math.ceil(surplus / per)))
+    return sorted(out, key=lambda i: -i.at_risk)
+
+
+def start_special(session: Session, org_key: str, dish_id: int, pct: float, days: int, reason: str,
+                  person_id: str) -> Special:
+    """Run a dish at a discount from tomorrow for `days` service days, recorded in the audit log.
+    Raises ValueError with a message for the person."""
+    from app import kitchen
+    from app.audit import append_event
+    dish = session.get(Dish, dish_id)
+    if dish is None or dish.org_key != org_key:
+        raise ValueError("no such dish on your menu")
+    if not (0 < pct <= 50) or not (1 <= days <= 7):
+        raise ValueError("a special is 1-50% off for 1-7 days")
+    day = kitchen.today(session)
+    special = Special(org_key=org_key, dish_id=dish_id, pct=pct, from_day=day + 1, until_day=day + days,
+                      reason=reason[:200], by=person_id)
+    session.add(special)
+    append_event(session, trace_id=f"menu-{org_key}", actor=person_id, event_type="menu.special_started",
+                 payload={"dish": dish.name, "pct": pct, "price": special_price(dish.price, pct),
+                          "from_day": day + 1, "until_day": day + days, "reason": reason[:200]})
+    session.commit()
+    return special
+
+
 # ---------------------------------------------------------------- a day's service
 
 @dataclass
@@ -320,8 +411,9 @@ class Ticket:
     sold_out: list[str] = field(default_factory=list)                 # dishes that ran out on this ticket
 
 
-def _pick(rng: random.Random, options: list[DishView]) -> DishView | None:
-    return rng.choices(options, weights=[o.dish.weight for o in options])[0] if options else None
+def _pick(rng: random.Random, options: list[DishView], boost: frozenset[int] = frozenset()) -> DishView | None:
+    weights = [o.dish.weight * (SPECIAL_BOOST if o.dish.id in boost else 1.0) for o in options]
+    return rng.choices(options, weights=weights)[0] if options else None
 
 
 def serve(session: Session, org_key: str, day: int, on: date, week_share: float, stock: dict[int, float]) -> dict[int, float]:
@@ -339,6 +431,12 @@ def serve(session: Session, org_key: str, day: int, on: date, week_share: float,
     if week_share <= 0:
         return used
     rng = random.Random(f"{org_key}/service/{on.isoformat()}")
+    on_special = active_specials(session, org_key, day)
+    boost = frozenset(on_special)
+
+    def price_of(v: DishView) -> float:
+        return special_price(v.dish.price, on_special[v.dish.id].pct) if v.dish.id in on_special else v.dish.price
+
     left = dict(stock)
     off: set[int] = set()                                   # sold out for the rest of the day
 
@@ -364,10 +462,11 @@ def serve(session: Session, org_key: str, day: int, on: date, week_share: float,
         t = Ticket(number, minute, rng.randint(1, 24), covers)
         wanted: list[DishView] = []
         for _ in range(covers):
-            wanted.append(_pick(rng, [v for v in menu if v.dish.category == "main" and v.dish.id not in off]))
+            wanted.append(_pick(rng, [v for v in menu if v.dish.category == "main" and v.dish.id not in off], boost))
             for category in ("starter", "dessert", "drink"):
                 if rng.random() < cfg[category]:
-                    wanted.append(_pick(rng, [v for v in menu if v.dish.category == category and v.dish.id not in off]))
+                    wanted.append(_pick(rng, [v for v in menu if v.dish.category == category and v.dish.id not in off],
+                                        boost))
         portions: dict[int, int] = {}
         for v in (w for w in wanted if w is not None):
             if v.dish.id in off:
@@ -378,12 +477,12 @@ def serve(session: Session, org_key: str, day: int, on: date, week_share: float,
                 off.add(v.dish.id)
                 t.sold_out.append(v.dish.name)
                 session.add(Sale(org_key=org_key, day=day, ticket=number, minute=minute, table_no=t.table,
-                                 covers=covers, dish_id=v.dish.id, quantity=1, price=v.dish.price, cost=v.cost,
+                                 covers=covers, dish_id=v.dish.id, quantity=1, price=price_of(v), cost=v.cost,
                                  served=0))
         for v in menu:
             if v.dish.id in portions:
                 session.add(Sale(org_key=org_key, day=day, ticket=number, minute=minute, table_no=t.table,
-                                 covers=covers, dish_id=v.dish.id, quantity=portions[v.dish.id], price=v.dish.price,
+                                 covers=covers, dish_id=v.dish.id, quantity=portions[v.dish.id], price=price_of(v),
                                  cost=v.cost))
         tickets.append(t)
     return {k: round(v, 3) for k, v in used.items()}

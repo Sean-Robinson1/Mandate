@@ -635,7 +635,12 @@ section.stock-card { margin-top: 20px; }
 .as-note { font-size: 11.5px; color: var(--muted); text-align: center; max-width: 170px; }
 .btn.ghost { background: transparent; border-color: transparent; color: var(--ink-2); }
 .btn.ghost:hover { background: var(--accent-2); }
-.agent-suggestion + .work { margin-top: 20px; }
+.agent-suggestion + .work, .specials-running + .work { margin-top: 20px; }
+.agent-suggestion.special { border-color: #efd9b0; }
+.agent-suggestion.special .as-mark { background: var(--warn); }
+.agent-suggestion.special .as-from { color: var(--warn); }
+.agent-suggestion.special .as-items li { background: var(--warn-bg); }
+.specials-running { margin-top: 16px; padding: 10px 14px; border-radius: 10px; background: var(--warn-bg); color: var(--ink-2); }
 @media (max-width: 700px) {
   .agent-suggestion { grid-template-columns: auto minmax(0, 1fr); }
   .as-actions { grid-column: 1 / -1; flex-direction: row; flex-wrap: wrap; align-items: center; }
