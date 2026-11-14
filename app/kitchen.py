@@ -178,6 +178,8 @@ def seed(session: Session, start: date | None = None) -> None:
             session.add(s)
             session.flush()
             _seed_history(session, s, first, today_day=day)
+    from app import prices                                   # here, not at the top: prices imports kitchen
+    prices.seed_history(session)
     session.commit()
 
 

@@ -632,3 +632,16 @@ section.stock-card { margin-top: 20px; }
 .chip-btn:hover { border-color: var(--accent); color: var(--accent); }
 .btn.danger { background: var(--bad); border-color: var(--bad); color: #fff; align-self: flex-start; }
 .btn.danger:hover { background: #8e211b; }
+
+/* ---------- ingredient prices ---------- */
+.prices-kpis { margin-top: 24px; }
+.prices-kpis .tile-value .unit { font-size: 15px; font-weight: 500; }
+.prices-all td { vertical-align: middle; }
+.share { display: inline-block; width: 64px; height: 6px; border-radius: 3px; background: var(--line); vertical-align: middle;
+  margin-right: 6px; overflow: hidden; }
+.share > span { display: block; height: 100%; background: var(--accent); }
+.price-source { font-size: 11.5px; font-weight: 600; padding: 2px 7px; border-radius: 4px; white-space: nowrap;
+  background: var(--paper); color: var(--muted); border: 1px solid var(--line); }
+.price-source.valio { background: var(--aimo-2); color: var(--aimo); border-color: transparent; }
+.switch-form { margin: 0; }
+@media (max-width: 860px) { .prices-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
