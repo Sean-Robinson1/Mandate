@@ -19,6 +19,7 @@
 </form>
 {% endfor %}
 <div class="work">
+  <div class="side-col">
   <section class="card" aria-labelledby="h-order">
     <div class="card-head"><h2 id="h-order">To order</h2><span class="muted small">Topped up to each item's level</span></div>
     {% for g in groups %}
@@ -60,6 +61,19 @@
     <p class="empty-note">Nothing needs ordering this week.</p>
     {% endfor %}
   </section>
+
+    <section class="card" aria-labelledby="h-first">
+      <div class="card-head"><h2 id="h-first">Use first</h2><span class="muted small">Closest use-by dates</span></div>
+      {% for b in use_first %}
+      <div class="arrival two">
+        <div class="line-main">{{ b.supply.name }} · {{ b.quantity|qty }} {{ b.supply.unit|unit }}</div>
+        <span class="small {{ 'bad-text' if b.days_left <= 1 else 'warn-text' }}">{% if b.days_left < 0 %}Past its date{% else %}Best before {{ b.best_before|on }}{% endif %}</span>
+      </div>
+      {% else %}
+      <p class="empty-note">Nothing close to its use-by date.</p>
+      {% endfor %}
+    </section>
+  </div>
 
   <div class="side-col">
     <a class="card approvals-card {{ 'has' if waiting }}" href="/approvals">
@@ -103,18 +117,6 @@
       </div>
       {% endfor %}
       {% if later %}<p class="small muted">{{ later|length }} more later</p>{% endif %}
-    </section>
-
-    <section class="card" aria-labelledby="h-first">
-      <div class="card-head"><h2 id="h-first">Use first</h2><span class="muted small">Closest use-by dates</span></div>
-      {% for b in use_first %}
-      <div class="arrival two">
-        <div class="line-main">{{ b.supply.name }} · {{ b.quantity|qty }} {{ b.supply.unit|unit }}</div>
-        <span class="small {{ 'bad-text' if b.days_left <= 1 else 'warn-text' }}">{% if b.days_left < 0 %}Past its date{% else %}Best before {{ b.best_before|on }}{% endif %}</span>
-      </div>
-      {% else %}
-      <p class="empty-note">Nothing close to its use-by date.</p>
-      {% endfor %}
     </section>
   </div>
 </div>
