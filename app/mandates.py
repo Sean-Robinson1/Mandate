@@ -1,4 +1,4 @@
-"""The two demo buyers, their people, and the mandate JSON Schema.
+"""The demo buyers (hotel, school, restaurant), their people, and the mandate JSON Schema.
 
 A mandate here is the organisation's *intent*. It becomes authority only once the organisation signs it with
 its own key (app/keys.py issues and stores the signed copy; nothing re-signs it afterwards).
@@ -27,6 +27,8 @@ PEOPLE: dict[str, Person] = {p.id: p for p in [
     Person("aino.koskinen", "Aino Koskinen", "Head chef", "hotel"),
     Person("mikko.laine", "Mikko Laine", "Purchasing manager", "hotel"),
     Person("sari.virtanen", "Sari Virtanen", "Kitchen manager", "school"),
+    Person("elina.makinen", "Elina Mäkinen", "Head chef", "restaurant"),
+    Person("jussi.heikkinen", "Jussi Heikkinen", "Owner", "restaurant"),
 ]}
 
 DEMO_MANDATES: dict[str, Mandate] = {
@@ -60,6 +62,20 @@ DEMO_MANDATES: dict[str, Mandate] = {
         substitution=SubstitutionPolicy(relaxable_preferences=["brand"]),
         approver="sari.virtanen",
         approver_name="Sari Virtanen",
+    ),
+    # A small independent bistro: the owner approves, so the agent's own limits are tight.
+    "restaurant": Mandate(
+        mandate_id="mandate-restaurant-001",
+        buyer_org="Bistro Lumo Oy",
+        agent_id="agent:bistro-lumo:purchasing-1",
+        valid_from=_VALID_FROM,
+        valid_until=_VALID_UNTIL,
+        limits=SpendLimits(per_order_auto_eur=600, per_order_max_eur=3000, per_week_auto_eur=2500),
+        substitution=SubstitutionPolicy(
+            relaxable_preferences=["brand", "pack_size"], allow_split_orders=True
+        ),
+        approver="jussi.heikkinen",
+        approver_name="Jussi Heikkinen",
     ),
 }
 

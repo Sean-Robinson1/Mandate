@@ -59,6 +59,18 @@ def test_seeded_sheet_is_healthy(sheet_db):
         assert kitchen.due_restocks(s, "hotel") == []
 
 
+def test_a_kitchen_added_later_is_seeded_into_an_existing_database_at_today(sheet_db):
+    with sheet_db.buyer_db() as s:
+        kitchen.next_day(s)                                              # the demo has moved on to day 2
+        s.execute(Supply.__table__.delete().where(Supply.org_key == "restaurant"))
+        s.commit()
+        kitchen.seed(s, start=NOW.date())
+        assert kitchen.due_restocks(s, "restaurant") == []              # starts healthy: nothing to order
+    r = rows(sheet_db, "restaurant")
+    assert r["Salmon fillet"].history[-1].day == 2 and r["Salmon fillet"].history[-1].on_hand == 18
+    assert all(not row.low for row in r.values())
+
+
 def test_a_day_uses_stock_and_records_it(sheet_db):
     with sheet_db.buyer_db() as s:
         assert kitchen.next_day(s) == 2

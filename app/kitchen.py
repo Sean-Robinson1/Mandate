@@ -41,10 +41,11 @@ ORDER_AHEAD = 3                      # list an item to order this many days befo
 USE_FIRST_DAYS = 3                   # show batches this close to their use-by date
 STEP = {"L": 10, "KG": 5, "PCS": 30}
 UNIT_WORDS = {"L": "litres", "KG": "kg", "PCS": "pieces"}
-AREAS = {"cold": "Cold room", "dry": "Dry store", "clean": "Cleaning"}
+AREAS = {"cold": "Cold room", "frozen": "Freezer", "dry": "Dry store", "clean": "Cleaning"}
 # Share of a typical day's use on each weekday, Monday first. shortcut: per kitchen in settings when there are more.
 WEEK = {"hotel": (0.9, 0.9, 0.95, 1.0, 1.1, 1.25, 0.9),
-        "school": (1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0)}
+        "school": (1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0),
+        "restaurant": (0.6, 0.8, 0.9, 1.0, 1.4, 1.5, 0.8)}   # quiet Monday, busy Friday and Saturday
 FLAT = (1.0,) * 7
 # shortcut: a suppliers table when kitchens can add their own.
 SUPPLIERS = {
@@ -53,6 +54,9 @@ SUPPLIERS = {
     "Paahtimo Oy": {"lead_days": 2, "terms": "delivers in 2 days", "contact": "Webshop"},
     "Puhdas Oy": {"lead_days": 4, "terms": "delivers weekly", "contact": "Email orders"},
     "Leipomo Oy": {"lead_days": 1, "terms": "delivers every weekday", "contact": "Phone 040 765 4321"},
+    "Lihatalo Oy": {"lead_days": 2, "terms": "delivers Mon, Wed and Fri", "contact": "Phone 040 222 3344"},
+    "Riistatalo Oy": {"lead_days": 3, "terms": "delivers Tue and Fri", "contact": "Email orders"},
+    "Juustola Oy": {"lead_days": 3, "terms": "delivers weekly on Thursdays", "contact": "Webshop"},
 }
 
 DEFAULT_SUPPLIES = {   # name, area, supplier, agent's term, unit, on hand, use, reorder, up to, rule, € per unit, shelf days
@@ -72,6 +76,36 @@ DEFAULT_SUPPLIES = {   # name, area, supplier, agent's term, unit, on hand, use,
         ("Oat drink", "cold", "Valio Aimo", "oat drink", "L", 35, 10, 25, 80, "ask", 1.6, 0),
         ("Carrots", "cold", "Pelto Produce Oy", "", "KG", 60, 14, 40, 120, "off", 1.1, 21),
         ("Rye bread", "dry", "Leipomo Oy", "", "KG", 45, 12, 30, 80, "off", 4.5, 4),
+    ],
+    # A bistro of ~120 covers a day. Daily use matches the menu's recipes (app/menu.py) at a typical dish mix.
+    # Dry goods from Valio Aimo without a product term are ordered by the kitchen itself in the webshop.
+    "restaurant": [
+        ("Salmon fillet", "cold", "Valio Aimo", "salmon fillet", "KG", 18, 7.5, 14, 32, "auto", 14.5, 4),
+        ("Cream", "cold", "Valio Aimo", "cream", "L", 22, 7.4, 15, 40, "auto", 3.9, 10),
+        ("Butter", "cold", "Valio Aimo", "butter", "KG", 9, 2, 5, 15, "auto", 8.5, 60),
+        ("Milk", "cold", "Valio Aimo", "milk", "L", 14, 2.6, 8, 24, "auto", 1.0, 7),
+        ("Grated cheese", "cold", "Valio Aimo", "grated cheese", "KG", 5, 1.6, 3, 8, "ask", 11.0, 30),
+        ("Beef mince", "cold", "Lihatalo Oy", "", "KG", 16, 5.4, 12, 30, "off", 9.8, 4),
+        ("Chicken breast", "cold", "Lihatalo Oy", "", "KG", 10, 3, 7, 18, "off", 9.5, 5),
+        ("Reindeer, sliced", "frozen", "Riistatalo Oy", "", "KG", 9, 2.3, 7, 16, "off", 38.0, 0),
+        ("Goat cheese", "cold", "Juustola Oy", "", "KG", 3, 0.5, 2, 5, "off", 21.0, 21),
+        ("Eggs", "cold", "Pelto Produce Oy", "", "PCS", 270, 68, 210, 480, "off", 0.22, 21),
+        ("Potatoes", "dry", "Pelto Produce Oy", "", "KG", 45, 11.8, 35, 90, "off", 0.9, 30),
+        ("Onions", "dry", "Pelto Produce Oy", "", "KG", 8, 1.5, 5, 15, "off", 1.2, 30),
+        ("Lettuce", "cold", "Pelto Produce Oy", "", "KG", 8, 2.5, 7, 16, "off", 4.5, 5),
+        ("Tomatoes", "cold", "Pelto Produce Oy", "", "KG", 5, 1.2, 4, 10, "off", 3.2, 7),
+        ("Beetroot", "cold", "Pelto Produce Oy", "", "KG", 7, 1.5, 5, 14, "off", 1.4, 21),
+        ("Dill", "cold", "Pelto Produce Oy", "", "KG", 1, 0.25, 0.8, 2, "off", 18.0, 5),
+        ("Chanterelles, frozen", "frozen", "Pelto Produce Oy", "", "KG", 5, 0.9, 3, 8, "off", 22.0, 0),
+        ("Blueberries, frozen", "frozen", "Pelto Produce Oy", "", "KG", 5, 0.9, 3, 8, "off", 9.0, 0),
+        ("Lingonberries, frozen", "frozen", "Pelto Produce Oy", "", "KG", 3, 0.45, 2, 5, "off", 7.0, 0),
+        ("Burger buns", "dry", "Leipomo Oy", "", "PCS", 50, 30, 35, 90, "off", 0.45, 3),
+        ("Sourdough bread", "dry", "Leipomo Oy", "", "KG", 2, 0.8, 1.5, 4, "off", 5.5, 3),
+        ("Pasta", "dry", "Valio Aimo", "", "KG", 12, 1.8, 6, 20, "off", 2.4, 0),
+        ("Wheat flour", "dry", "Valio Aimo", "", "KG", 8, 0.6, 4, 15, "off", 0.9, 0),
+        ("Sugar", "dry", "Valio Aimo", "", "KG", 8, 1, 4, 15, "off", 1.3, 0),
+        ("Coffee beans", "dry", "Paahtimo Oy", "", "KG", 4, 0.72, 3, 8, "off", 18.0, 0),
+        ("Dishwasher detergent", "clean", "Puhdas Oy", "", "L", 15, 3, 13, 30, "off", 4.2, 0),
     ],
 }
 
@@ -122,26 +156,32 @@ def today(session: Session) -> int:
 # ---------------------------------------------------------------- first run
 
 def seed(session: Session, start: date | None = None) -> None:
-    """Give each kitchen its items with four weeks of history, and start the calendar (first run only)."""
+    """Give each kitchen without items its items, with four weeks of history, and start the calendar.
+
+    Per kitchen, so a kitchen added later (the restaurant) also appears in an existing database.
+    """
     start = start or datetime.now(config.HELSINKI).date()
     state = session.get(SimState, 1)
     if state is None:
         session.add(SimState(id=1, day=1, start=start.isoformat()))
     elif not state.start:                                    # a database from before days had dates
         state.start = (start - timedelta(days=state.day - 1)).isoformat()
-    if session.scalar(select(Supply.id).limit(1)) is None:
-        for org, rows in DEFAULT_SUPPLIES.items():
-            for i, (name, area, supplier, ask_as, unit, on_hand, use, low, up_to, rule, cost, shelf) in enumerate(rows):
-                s = Supply(org_key=org, name=name, storage=area, supplier=supplier, ask_as=ask_as, unit=unit,
-                           on_hand=on_hand, daily_use=use, reorder_below=low, order_up_to=up_to, rule=rule,
-                           unit_cost=cost, shelf_days=shelf, position=i)
-                session.add(s)
-                session.flush()
-                _seed_history(session, s, start)
+    session.flush()
+    day, first = calendar(session)
+    for org, rows in DEFAULT_SUPPLIES.items():
+        if session.scalar(select(Supply.id).where(Supply.org_key == org).limit(1)) is not None:
+            continue
+        for i, (name, area, supplier, ask_as, unit, on_hand, use, low, up_to, rule, cost, shelf) in enumerate(rows):
+            s = Supply(org_key=org, name=name, storage=area, supplier=supplier, ask_as=ask_as, unit=unit,
+                       on_hand=on_hand, daily_use=use, reorder_below=low, order_up_to=up_to, rule=rule,
+                       unit_cost=cost, shelf_days=shelf, position=i)
+            session.add(s)
+            session.flush()
+            _seed_history(session, s, first, today_day=day)
     session.commit()
 
 
-def _seed_history(session: Session, s: Supply, start: date) -> None:
+def _seed_history(session: Session, s: Supply, start: date, today_day: int = 1) -> None:
     """Believable past for a new item, worked backwards from today's count so today stays exactly as given.
 
     Going back in time stock only grows; once it passes 'order up to', a delivery must have arrived that day.
@@ -149,7 +189,7 @@ def _seed_history(session: Session, s: Supply, start: date) -> None:
     rng = random.Random(f"{s.org_key}/{s.name}")
     step = STEP.get(s.unit, 1)
     closing = float(s.on_hand)
-    for day in range(1, 1 - HISTORY_DAYS, -1):
+    for day in range(today_day, today_day - HISTORY_DAYS, -1):
         raw = expected_use(s, date_of(start, day)) * rng.uniform(0.85, 1.15)
         used = float(round(raw)) if s.unit == "PCS" else round(raw, 1)
         opening, received = closing + used, 0.0
@@ -160,7 +200,7 @@ def _seed_history(session: Session, s: Supply, start: date) -> None:
             session.add(Delivery(supply_id=s.id, supplier=s.supplier, quantity=received, ordered_day=day - lead_days(s),
                                  due_day=day, received_day=day, status="RECEIVED"))
         session.add(StockLevel(supply_id=s.id, day=day, on_hand=round(closing, 2), used=used, received=received,
-                               source="count" if day == 1 else "history"))
+                               source="count" if day == today_day else "history"))
         closing = round(max(0.0, opening), 2)
 
 

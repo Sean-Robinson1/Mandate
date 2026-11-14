@@ -318,7 +318,8 @@ REORDER_CHOICES = [
                                "level, within the purchasing rules."),
     ("ask", "Agent asks first", "The agent prepares the order; the purchasing manager approves it before it is sent."),
 ]
-WEEK_NOTES = {"school": "none at weekends", "hotel": "busier at weekends"}
+WEEK_NOTES = {"school": "none at weekends", "hotel": "busier at weekends",
+              "restaurant": "quiet Mondays, busiest Friday and Saturday"}
 
 
 def _count_label(level, start) -> dict | None:

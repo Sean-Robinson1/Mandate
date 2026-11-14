@@ -33,6 +33,10 @@ PRODUCT_TYPES: dict[str, dict] = {
                            "chicken", "sauce"]},
     "oat drink": {"terms": ["oat", "drink"], "aliases": ["oat drink", "oat milk", "kaurajuoma"],
                   "category": None, "exclude": []},
+    "salmon fillet": {"terms": ["salmon", "fillet"], "aliases": ["salmon fillet", "salmon", "lohifilee", "lohi"],
+                      "category": "187", "exclude": ["smoked", "cube", "strip", "marinated", "soup", "graved"]},
+    "grated cheese": {"terms": ["grated", "cheese"], "aliases": ["grated cheese", "juustoraaste"],
+                      "category": "10603", "exclude": []},
 }
 
 CLAIMS: dict[str, str] = {

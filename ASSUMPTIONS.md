@@ -39,6 +39,11 @@ Each entry: what we assumed, why, and what would replace it in production.
 10d. **Use follows a fixed week per kitchen** (the school uses nothing at weekends, the hotel is busier at
     weekends). The forecast runs that week at the typical daily use and counts deliveries on the way; it does not
     assume the agent will reorder. Production: learn the pattern from the kitchen's own history and menus.
+10h. **The restaurant, Bistro Lumo Oy, is made up**, as are its people, menu-sized daily use and the supplier
+    names Lihatalo, Riistatalo and Juustola. Its week is quiet on Mondays and busiest on Fridays and Saturdays.
+    Only five of its items (salmon fillet, cream, butter, milk, grated cheese) are ordered by the agent; Valio Aimo
+    dry goods without a product term (pasta, flour, sugar) are ordered by the kitchen in the webshop. A kitchen
+    added after the first run is seeded at the current kitchen day, with its own four weeks of history.
 10e. **Other suppliers have no ordering gateway**, so their items are tracked but ordered by the kitchen, which
     ticks it off ("Mark as ordered": the suggested quantity, due after the supplier's lead time). Supplier names,
     lead times, delivery days, unit costs and shelf lives are made up. A delivery adds to stock when someone checks
