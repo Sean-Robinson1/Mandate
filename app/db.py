@@ -35,31 +35,69 @@ class Order(Base):
 
 
 class Supply(Base):
-    """One row of a kitchen's supplies sheet."""
+    """One item a kitchen keeps in stock, from any supplier."""
 
     __tablename__ = "supplies"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     org_key: Mapped[str] = mapped_column(String(20), index=True)     # hotel | school
     name: Mapped[str] = mapped_column(String(120))
-    ask_as: Mapped[str] = mapped_column(String(120))                 # how the agent asks for it, e.g. "lactose-free milk"
-    unit: Mapped[str] = mapped_column(String(4))                     # L | KG
+    category: Mapped[str] = mapped_column(String(40), default="")
+    storage: Mapped[str] = mapped_column(String(20), default="")     # cold | dry | clean: where it is counted
+    unit_cost: Mapped[float] = mapped_column(Float, default=0.0)    # € per unit before VAT, for stock value
+    shelf_days: Mapped[int] = mapped_column(Integer, default=0)     # days from delivery to use-by; 0 = keeps
+    supplier: Mapped[str] = mapped_column(String(120), default="")
+    ask_as: Mapped[str] = mapped_column(String(120), default="")     # how the agent asks for it; "" = not orderable by it
+    unit: Mapped[str] = mapped_column(String(4))                     # L | KG | PCS
     on_hand: Mapped[float] = mapped_column(Float)
-    daily_use: Mapped[float] = mapped_column(Float)
+    daily_use: Mapped[float] = mapped_column(Float)                  # on a typical day; the week pattern scales it
     reorder_below: Mapped[float] = mapped_column(Float)
     order_up_to: Mapped[float] = mapped_column(Float)
-    rule: Mapped[str] = mapped_column(String(10), default="auto")   # auto | ask: may the agent restock alone?
+    rule: Mapped[str] = mapped_column(String(10), default="off")    # off | auto | ask: automatic reordering by the agent
     updated_by: Mapped[str] = mapped_column(String(80), default="")
     position: Mapped[int] = mapped_column(Integer, default=0)
 
 
+class StockLevel(Base):
+    """One item's stock at the end of one kitchen day: what was used, what arrived, and where the count came from."""
+
+    __tablename__ = "stock_levels"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    supply_id: Mapped[int] = mapped_column(Integer, index=True)
+    day: Mapped[int] = mapped_column(Integer, index=True)
+    on_hand: Mapped[float] = mapped_column(Float)
+    used: Mapped[float] = mapped_column(Float, default=0.0)
+    received: Mapped[float] = mapped_column(Float, default=0.0)
+    source: Mapped[str] = mapped_column(String(20), default="day")  # day | count | import | api | history
+    by: Mapped[str] = mapped_column(String(80), default="")
+
+
+class Delivery(Base):
+    """An order placed outside the agent (by phone, a supplier's webshop, another system), expected or received."""
+
+    __tablename__ = "deliveries"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    supply_id: Mapped[int] = mapped_column(Integer, index=True)
+    supplier: Mapped[str] = mapped_column(String(120), default="")
+    quantity: Mapped[float] = mapped_column(Float)
+    ordered_day: Mapped[int] = mapped_column(Integer)
+    due_day: Mapped[int] = mapped_column(Integer)
+    received_day: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    status: Mapped[str] = mapped_column(String(12), default="EXPECTED")   # EXPECTED | RECEIVED
+    reference: Mapped[str] = mapped_column(String(80), default="")
+    created_by: Mapped[str] = mapped_column(String(80), default="")
+
+
 class SimState(Base):
-    """The simulated kitchen day (the demo's 'next day' button)."""
+    """The demo's calendar: day 1 is `start`, and the 'next day' button moves it on."""
 
     __tablename__ = "sim_state"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     day: Mapped[int] = mapped_column(Integer, default=1)
+    start: Mapped[str] = mapped_column(String(10), default="")      # ISO date of day 1
 
 
 class Run(Base):

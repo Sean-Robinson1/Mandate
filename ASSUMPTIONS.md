@@ -21,6 +21,8 @@ Each entry: what we assumed, why, and what would replace it in production.
 8. **A search returns at most 200 products**, because the backend asks clients not to poll the whole catalog.
    Every product type in the lexicon has fewer matches; any beyond the limit are counted and noted on the plan.
 9. **Missing allergen data is treated as unsafe** for any buyer with allergen constraints.
+9a. **The gateway sends its own User-Agent** (`trusted-trade-gateway/0.4`) because the mock API sits behind
+   Cloudflare, which reportedly blocks default Python client user agents with 403.
 
 ## Kitchen
 
@@ -31,6 +33,22 @@ Each entry: what we assumed, why, and what would replace it in production.
 10b. **The agent restocks up to the "order up to" level**, rounded up to 10 L or 5 kg, and only when nothing for
     that row is already on the way or being decided. "Ask first" rows always go to the purchasing manager; that
     rule lives on the buyer's side (Valio Aimo enforces the mandate, not the kitchen's preferences).
+10c. **Four weeks of history are generated on first run**, worked backwards from today's stock with ±15% daily
+    noise and deliveries whenever the stock would have passed "order up to". Day 1 is the real date the demo was
+    seeded; "Next day" moves the kitchen calendar on, while orders to Valio Aimo still use real dates.
+10d. **Use follows a fixed week per kitchen** (the school uses nothing at weekends, the hotel is busier at
+    weekends). The forecast runs that week at the typical daily use and counts deliveries on the way; it does not
+    assume the agent will reorder. Production: learn the pattern from the kitchen's own history and menus.
+10e. **Other suppliers have no ordering gateway**, so their items are tracked but ordered by the kitchen, which
+    ticks it off ("Mark as ordered": the suggested quantity, due after the supplier's lead time). Supplier names,
+    lead times, delivery days, unit costs and shelf lives are made up. A delivery adds to stock when someone checks
+    it in; one not checked in by the next day is taken in automatically so the demo never stalls. Production:
+    delivery notes (GS1 DESADV) or the supplier's confirmation.
+10g. **Use-by dates assume stock is used oldest first**: what is left is the newest deliveries, each dated from
+    its arrival plus the item's shelf life. Production: dates read from delivery notes or labels per batch.
+10f. **Stock systems connect by CSV export or a push API.** Items are matched by exact name (ignoring case);
+    unknown names are reported, never created. The push API uses one shared token. Production: per-system
+    credentials, and matching by GTIN or the kitchen system's own item code.
 
 ## Reading requests
 

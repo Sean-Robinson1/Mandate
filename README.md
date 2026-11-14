@@ -24,17 +24,23 @@ cp .env.example .env                                         # then fill in VALI
 ```
 
 Open http://127.0.0.1:8000. You are signed in as Aino (head chef, hotel) and land on the kitchen's **supplies
-sheet**. Press **Next day** to use a day of stock: when a row drops below its reorder level the agent restocks it
-from Valio Aimo by itself (rows set to "Ask first" go to the purchasing manager). Click any request to watch the
-agent work with Valio Aimo, or type a one-off need under the sheet.
+dashboard**: stock for items from every supplier, four weeks of history, when each item runs out, and the
+deliveries on the way. Open an item for its stock chart and forecast, its levels, and to record an order placed
+elsewhere. Counts can be typed in, imported from any kitchen system's CSV export, or pushed to
+`POST /api/stock-counts` (set `STOCK_API_TOKEN` in `.env`).
 
-Switch to Mikko (purchasing manager) in the sidebar to approve, to set levels and rules on the sheet, and to change
+Automatic reordering is an add-on per item, for suppliers with an ordering gateway (Valio Aimo). Press
+**Next day** to use a day of stock: when such an item drops below its reorder level the agent restocks it by itself
+("Agent asks first" items go to the purchasing manager). The agent panel on the right shows what it is doing; click
+a request to watch it work with Valio Aimo, or ask it for something one-off.
+
+Switch to Mikko (purchasing manager) in the sidebar to approve, to set levels and automatic reordering, and to change
 the **purchasing rules**: review the difference, sign a new mandate version, and Valio Aimo refuses the old one from
 then on. When Mikko keeps approving similar orders, the rules page suggests a higher limit. Sari runs the school
 kitchen, whose mandate forbids nuts. Valio Aimo's API docs are at http://127.0.0.1:8100/docs.
 
 `.venv/Scripts/python -m scripts.reset` (services stopped) starts the demo afresh: empty databases, version 1
-mandates, a fresh sheet. Keys are kept.
+mandates, fresh stock with new history. Keys are kept.
 
 - One request from the terminal (gateway running): `.venv/Scripts/python -m app.cli --buyer school "..."`
 - MCP (gateway running): `.venv/Scripts/python -m gateway.mcp_server`; config snippet in `gateway/mcp_server.py`
@@ -78,7 +84,8 @@ sequenceDiagram
 | `app/agent.py` | The buyer's agent: request to order, approval or refusal |
 | `app/intent.py`, `app/planner.py`, `app/policy.py` | Reading requests, planning at minimum cost, the mandate rules |
 | `app/keys.py`, `app/mandates.py` | Buyer keys, people, signed mandates and their versions |
-| `app/kitchen.py` | Supplies sheet, simulated days, low-stock restocking |
+| `app/kitchen.py` | Stock, history, forecast, deliveries, stock-file import, simulated days, agent restocking |
+| `app/charts.py` | Geometry for the stock and use charts (inline SVG) |
 | `app/rules.py` | Editing a mandate, the difference a change makes, earned-trust suggestions |
 | `app/timeline.py`, `app/web.py` | The step-by-step story and the console |
 | `app/audit.py` | Append-only, hash-chained audit log |

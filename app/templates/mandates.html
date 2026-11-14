@@ -82,11 +82,19 @@
   </div>
 
   <dl class="keys">
-    <div><dt>Signed by</dt><dd><span class="dot {{ 'ok' if it.valid else 'bad' }}"></span>{{ m.buyer_org }} · signature {{ "verified" if it.valid else "INVALID" }} · valid to {{ m.valid_until }}<span class="mono sub">{{ m.signer_key_id }}</span></dd></div>
-    <div><dt>Agent</dt><dd>Orders are signed with this key only<span class="mono sub">{{ m.agent_id }} · {{ m.agent_public_key }}</span></dd></div>
-    <div><dt>Approver</dt><dd>{{ m.approver_name }} · approvals signed with this key<span class="mono sub">{{ m.approver_public_key }}</span></dd></div>
+    <div><dt>Signed by</dt><dd><span class="dot {{ 'ok' if it.valid else 'bad' }}"></span>{{ m.buyer_org }} · signature {{ "verified" if it.valid else "INVALID" }} · valid to {{ m.valid_until }}</dd></div>
+    <div><dt>Agent</dt><dd>Only the organisation's own agent can sign orders</dd></div>
+    <div><dt>Approver</dt><dd>{{ m.approver_name }} signs every approval with their own key</dd></div>
     <div><dt>Valio Aimo</dt><dd>Checks the signature, the version, the agent's key, the approver's key and the hard limits before accepting any order</dd></div>
   </dl>
+  <details>
+    <summary class="small">Keys</summary>
+    <dl class="keys">
+      <div><dt>Organisation</dt><dd><span class="mono sub">{{ m.signer_key_id }}</span></dd></div>
+      <div><dt>Agent</dt><dd><span class="mono sub">{{ m.agent_id }} · {{ m.agent_public_key }}</span></dd></div>
+      <div><dt>Approver</dt><dd><span class="mono sub">{{ m.approver_public_key }}</span></dd></div>
+    </dl>
+  </details>
 
   {% if it.history %}
   <details>

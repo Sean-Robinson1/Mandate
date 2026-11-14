@@ -22,7 +22,12 @@
   </table>
   </div>
   {% else %}
-  <p class="empty">Nothing is waiting for approval.</p>
+  <div class="empty-card">
+    <p><strong>Nothing is waiting for approval.</strong></p>
+    <p class="muted">Orders come here when the agent may not place them alone: over the per-order or weekly limit,
+      a price well above the cheapest option, an unclear request, or an item set to "ask first". The approver named
+      in the <a href="/rules">purchasing rules</a> decides, and the approval is signed with their key.</p>
+  </div>
   {% endif %}
 </section>
 {% endblock %}

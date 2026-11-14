@@ -1,0 +1,159 @@
+<div class="work">
+  <section class="card" aria-labelledby="h-order">
+    <div class="card-head"><h2 id="h-order">To order</h2><span class="muted small">Topped up to each item's level</span></div>
+    {% for sg in suggestions %}
+    <form method="post" action="/supplies/agent-order" class="suggest">
+      <div class="suggest-text"><span class="suggest-tag">Suggested by the purchasing agent</span>
+        <p>{{ sg.text }}</p>
+        <span class="small muted">{% for r in sg.rows %}{{ r.suggested|qty }} {{ r.unit }} {{ r.supply.name|lower }}{{ ", " if not loop.last }}{% endfor %}
+          {%- if sg.total %} · about {{ sg.total|eur0 }}{% endif %} · checked against the purchasing rules before it is sent</span></div>
+      {% for r in sg.rows %}<input type="hidden" name="item" value="{{ r.supply.id }}">{% endfor %}
+      <button class="btn">Let the agent order {{ "these" if sg.rows|length > 1 else "it" }}</button>
+    </form>
+    {% endfor %}
+    {% for g in groups %}
+    <div class="group {{ 'agent' if g.agent }}">
+      <div class="group-head">
+        <div><strong>{{ g.supplier }}</strong>{% if g.terms %} <span class="small muted">· {{ g.terms }}</span>{% endif %}</div>
+        {% if g.agent %}<span class="small agent-label">Ordered by the purchasing agent</span>
+        {% else %}<span class="small muted">{{ g.contact }}</span>{% endif %}
+      </div>
+      {% for r in g.rows %}{% set s = r.supply %}
+      <div class="line">
+        <div class="line-main">
+          <a class="item-link" href="/supplies/{{ s.id }}">{{ s.name }}</a> · {{ r.suggested|qty }} {{ r.unit }}
+          <span class="sub">{% if r.runs_out_on %}Runs out {{ r.runs_out_on|on }}{% else %}Below its reorder level{% endif %}
+            {%- if s.unit_cost %} · about {{ (r.suggested * s.unit_cost)|eur0 }}{% endif %}</span>
+        </div>
+        <div class="line-act">
+          {% if r.open_run and r.open_run.status == "NEEDS_HUMAN" %}
+            <a class="status warn" href="/requests/{{ r.open_run.trace_id }}"><span class="dot"></span>Waiting for {{ approver }}</a>
+          {% elif r.open_run %}
+            <a class="status busy" href="/requests/{{ r.open_run.trace_id }}"><span class="dot"></span>Agent is ordering</a>
+          {% elif g.agent and r.last_run and r.last_run.status in STOPPED %}
+            <a class="status bad" href="/requests/{{ r.last_run.trace_id }}"><span class="dot"></span>Agent didn't order: see why</a>
+            <form method="post" action="/supplies/{{ s.id }}/ordered"><button class="btn secondary small-btn">Mark as ordered</button></form>
+          {% elif r.connected %}
+            <span class="small muted">{% if s.rule != "off" %}Orders it alone below {{ s.reorder_below|qty }} {{ r.unit }}{% endif %}</span>
+            <form method="post" action="/supplies/agent-order"><input type="hidden" name="item" value="{{ s.id }}">
+              <button class="btn secondary small-btn">Order now</button></form>
+          {% else %}
+            <form method="post" action="/supplies/{{ s.id }}/ordered"><button class="btn secondary small-btn">Mark as ordered</button></form>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="empty-note">Nothing needs ordering this week.</p>
+    {% endfor %}
+  </section>
+
+  <div class="side-col">
+    <a class="card approvals-card {{ 'has' if waiting }}" href="/approvals">
+      <span class="ap-count">{{ waiting|length }}</span>
+      <span class="ap-text"><strong>{{ "Waiting for approval" if waiting else "Nothing waiting for approval" }}</strong>
+        <span class="sub">{% if waiting %}{% for r in waiting[:2] %}{{ r.request_text|truncate(40) }}{{ "; " if not loop.last }}{% endfor %}{% if waiting|length > 2 %} and {{ waiting|length - 2 }} more{% endif %} · {{ waiting_total|eur0 }}
+          {% else %}Orders the agent may not place alone come here for {{ approver }}{% endif %}</span></span>
+      <span class="ap-go">{{ "Review" if waiting and can_approve else "Open" }} →</span>
+    </a>
+    <section class="card" aria-labelledby="h-arriving">
+      <div class="card-head"><h2 id="h-arriving">Arriving</h2><span class="muted small">{{ upcoming|length }} this week</span></div>
+      {% for i in upcoming %}
+      <div class="arrival">
+        <span class="a-day {{ 'today' if i.due }}">{{ "Today" if i.due else i.on|on }}</span>
+        <div class="line-main">{{ i.supply.name }} · {{ i.quantity|qty }} {{ i.supply.unit|unit }}
+          <span class="sub">{{ i.supplier }} · {% if i.via == "agent" %}<a href="/requests/{{ i.link }}">ordered by the agent</a>{% else %}recorded order{% endif %}</span></div>
+        {% if i.due %}
+          <form method="post" action="/deliveries/{{ i.key }}/check-in"><button class="btn small-btn">Check in</button></form>
+        {% endif %}
+      </div>
+      {% else %}
+      <p class="empty-note">Nothing on order.</p>
+      {% endfor %}
+      {% if later %}<p class="small muted">{{ later|length }} more later</p>{% endif %}
+    </section>
+
+    <section class="card" aria-labelledby="h-first">
+      <div class="card-head"><h2 id="h-first">Use first</h2><span class="muted small">Closest use-by dates</span></div>
+      {% for b in use_first %}
+      <div class="arrival two">
+        <div class="line-main">{{ b.supply.name }} · {{ b.quantity|qty }} {{ b.supply.unit|unit }}</div>
+        <span class="small {{ 'bad-text' if b.days_left <= 1 else 'warn-text' }}">{% if b.days_left < 0 %}Past its date{% else %}Best before {{ b.best_before|on }}{% endif %}</span>
+      </div>
+      {% else %}
+      <p class="empty-note">Nothing close to its use-by date.</p>
+      {% endfor %}
+    </section>
+  </div>
+</div>
+
+<section class="card stock-card" aria-labelledby="h-stock">
+  <form method="post" action="/supplies/count" class="stock" id="count-form">
+    <div class="card-head wrap">
+      <h2 id="h-stock">Stock by storage area</h2>
+      <div class="count-actions">
+        <span class="small muted when-counting" id="count-progress"></span>
+        <button type="button" class="btn secondary when-counting" id="cancel-count">Cancel</button>
+        <button type="submit" class="btn when-counting">Save count</button>
+        <button type="button" class="btn secondary when-idle" id="start-count">Start a stock count</button>
+      </div>
+    </div>
+    <div class="tabs" role="tablist" aria-label="Storage area">
+      <button type="button" role="tab" class="tab" data-tab="all" aria-selected="true">All {{ rows|length }}</button>
+      {% for key, label, items in areas %}
+      <button type="button" role="tab" class="tab" data-tab="{{ key }}" aria-selected="false">{{ label }} {{ items|length }}</button>
+      {% endfor %}
+    </div>
+    <div class="table-scroll">
+      <table class="stock-table">
+        <thead><tr><th>Item</th><th class="num">On hand</th><th class="level-col">Level</th><th class="num">Lasts</th><th>Status</th><th class="num">Value</th><th><span class="sr-only">Order</span></th></tr></thead>
+        <tbody>
+        {% for key, label, items in areas %}{% for r in items %}{% set s = r.supply %}
+          <tr data-area="{{ key }}" class="{{ 'row-low' if r.tone == 'bad' }}">
+            <td><a class="item-link" href="/supplies/{{ s.id }}">{{ s.name }}</a>
+              <span class="sub">{{ label }} · {{ s.supplier }}{% if s.rule != "off" and r.connected %} <span class="badge" title="The purchasing agent reorders this item{{ ' after approval' if s.rule == 'ask' }}">Auto-reorder</span>{% endif %}</span></td>
+            <td class="num">
+              <span class="when-idle"><strong>{{ s.on_hand|qty }}</strong> <span class="unit">{{ r.unit }}</span>
+                {% if r.delivered_today %}<span class="sub delivered">+{{ r.delivered_today|qty }} today</span>{% endif %}</span>
+              <label class="when-counting cell-wrap"><span class="sr-only">{{ s.name }} counted</span>
+                <input class="cell count-input" name="count-{{ s.id }}" inputmode="decimal" placeholder="{{ s.on_hand|qty }}" autocomplete="off"><span class="unit">{{ r.unit }}</span></label>
+            </td>
+            <td class="level-col"><div class="level" role="img" aria-label="{{ s.on_hand|qty }} of {{ s.order_up_to|qty }} {{ r.unit }}, reorder at {{ s.reorder_below|qty }}">
+              <i class="{{ 'low' if s.on_hand < s.reorder_below }}" style="width: {{ [100, (s.on_hand / s.order_up_to * 100) if s.order_up_to else 0]|min }}%"></i>
+              <b style="left: {{ (s.reorder_below / s.order_up_to * 100) if s.order_up_to else 0 }}%"></b></div></td>
+            <td class="num">{% if r.lasts is not none %}{{ r.lasts }} day{{ "s" if r.lasts != 1 }}{% else %}–{% endif %}</td>
+            <td><span class="chip {{ r.tone }}">{{ r.status }}</span></td>
+            <td class="num muted">{{ r.value|eur0 if s.unit_cost else "–" }}</td>
+            <td class="num when-idle-cell">
+              <details class="menu order-more">
+                <summary class="btn secondary small-btn">Order more</summary>
+                <div class="menu-panel">
+                  <label class="field-label small" for="q-{{ s.id }}">How much {{ s.name|lower }}?</label>
+                  <span class="cell-wrap"><input class="cell" id="q-{{ s.id }}" inputmode="decimal" autocomplete="off"
+                    form="order-{{ s.id }}" name="{{ ('qty-' ~ s.id) if r.connected else 'quantity' }}"
+                    value="{{ (r.suggested or ([s.order_up_to - s.on_hand, 0]|max))|round|int }}"><span class="unit">{{ r.unit }}</span></span>
+                  <span class="small muted">{% if r.suggested %}Tops it up to {{ s.order_up_to|qty }} {{ r.unit }}.{% else %}It is already at its usual level.{% endif %}
+                    {% if r.expected %}{{ r.on_order|qty }} {{ r.unit }} is already on the way.{% endif %}</span>
+                  {% if r.connected %}
+                    <button class="btn" form="order-{{ s.id }}">Ask the agent to order</button>
+                    <span class="small muted">From {{ s.supplier }}, checked against the purchasing rules.</span>
+                  {% else %}
+                    <button class="btn" form="order-{{ s.id }}">I ordered this from {{ kitchen_short(s.supplier) }}</button>
+                    <span class="small muted">{{ supplier_contact(s.supplier) }} · arrives in about {{ lead(s) }} days.</span>
+                  {% endif %}
+                </div>
+              </details>
+            </td>
+          </tr>
+        {% endfor %}{% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="small muted">The bar fills to the 'order up to' level; the tick is the reorder level. Leave a field blank to keep its figure.</p>
+  </form>
+  {% for r in rows %}
+    {% if r.connected %}<form id="order-{{ r.supply.id }}" method="post" action="/supplies/agent-order"><input type="hidden" name="item" value="{{ r.supply.id }}"></form>
+    {% else %}<form id="order-{{ r.supply.id }}" method="post" action="/supplies/{{ r.supply.id }}/ordered"></form>{% endif %}
+  {% endfor %}
+</section>

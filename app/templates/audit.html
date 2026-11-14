@@ -7,7 +7,9 @@
 
 <div class="verdict {{ 'ok' if chain.ok else 'bad' }}">
   <p class="verdict-title">{{ "Chain verified" if chain.ok else "Chain broken at entry #" ~ chain.first_bad_seq }}</p>
-  {% if chain.ok %}
+  {% if chain.ok and not chain.events_checked %}
+  <p>No entries yet. The first request the agent handles starts the chain.</p>
+  {% elif chain.ok %}
   <p>All {{ chain.events_checked }} entries were re-hashed just now and match.
     {% if chain.head_hash %}Latest hash <span class="mono">{{ chain.head_hash[:24] }}…</span>{% endif %}</p>
   {% else %}<p>{{ chain.problem }}</p>{% endif %}
@@ -34,6 +36,12 @@
     </tbody>
   </table>
   </div>
-  {% else %}<p class="empty">No entries yet.</p>{% endif %}
+  {% else %}
+  <div class="empty-card">
+    <p><strong>Nothing recorded yet.</strong></p>
+    <p class="muted">Each request, signed offer, approval and order will appear here in order, each one sealed with
+      the hash of the entry before it. Press <a href="/">Next day</a> on Supplies or <a href="/activity">ask the agent</a> to start.</p>
+  </div>
+  {% endif %}
 </section>
 {% endblock %}

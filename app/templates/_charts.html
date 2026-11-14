@@ -1,0 +1,68 @@
+{% macro spark(sp, label) -%}
+{% if sp %}
+<svg class="spark" viewBox="0 0 {{ sp.w }} {{ sp.h }}" width="{{ sp.w }}" height="{{ sp.h }}" role="img" aria-label="{{ label }}">
+  <line x1="0" x2="{{ sp.w }}" y1="{{ sp.reorder }}" y2="{{ sp.reorder }}" class="spark-ref"/>
+  <polyline points="{{ sp.points }}" class="spark-line"/>
+  <circle cx="{{ sp.last[0] }}" cy="{{ sp.last[1] }}" r="2.5" class="spark-end"/>
+</svg>
+{% else %}<span class="muted">–</span>{% endif %}
+{%- endmacro %}
+
+{% macro stock(c, name) -%}
+<div class="chart">
+<svg viewBox="0 0 {{ c.w }} {{ c.h }}" role="img" tabindex="0" data-hover='{{ c.hover }}' data-w="{{ c.w }}"
+     aria-label="{{ name }} stock over the last four weeks and forecast for the next three. Use the arrow keys to read each day.">
+  {% for t in c.yticks %}
+  <line x1="{{ c.left }}" x2="{{ c.right }}" y1="{{ t.y }}" y2="{{ t.y }}" class="grid"/>
+  <text x="{{ c.left - 8 }}" y="{{ t.y + 4 }}" class="axis" text-anchor="end">{{ t.label }}</text>
+  {% endfor %}
+  {% for t in c.xticks %}<text x="{{ t.x }}" y="{{ c.base + 18 }}" class="axis" text-anchor="middle">{{ t.label }}</text>{% endfor %}
+  <line x1="{{ c.left }}" x2="{{ c.right }}" y1="{{ c.up_to.y }}" y2="{{ c.up_to.y }}" class="level up"/>
+  <text x="{{ c.right + 6 }}" y="{{ c.up_to.y + 4 }}" class="level-label">{{ c.up_to.label }}</text>
+  <line x1="{{ c.left }}" x2="{{ c.right }}" y1="{{ c.reorder.y }}" y2="{{ c.reorder.y }}" class="level"/>
+  <text x="{{ c.right + 6 }}" y="{{ c.reorder.y + 4 }}" class="level-label strong">{{ c.reorder.label }}</text>
+  <line x1="{{ c.today }}" x2="{{ c.today }}" y1="{{ c.top }}" y2="{{ c.base }}" class="today"/>
+  <text x="{{ c.today + 4 }}" y="{{ c.top + 10 }}" class="axis">Today</text>
+  <path d="{{ c.area }}" class="area"/>
+  <path d="{{ c.line }}" class="line"/>
+  <path d="{{ c.forecast }}" class="line forecast"/>
+  {% if c.runs_out %}
+  <circle cx="{{ c.runs_out }}" cy="{{ c.base }}" r="4.5" class="runs-out"/>
+  <text x="{{ c.runs_out }}" y="{{ c.base - 10 }}" class="axis strong" text-anchor="middle">Runs out</text>
+  {% endif %}
+  {% for m in c.marks %}
+  <g class="delivery {{ 'expected' if m.expected }}"><title>{{ m.title }}</title>
+    <rect x="{{ m.x - 8 }}" y="{{ c.base - 18 }}" width="16" height="20" fill="transparent"/>
+    <path d="M{{ m.x }},{{ c.base - 12 }} l5,9 h-10 z"/>
+  </g>
+  {% endfor %}
+</svg>
+<div class="chart-tip" hidden></div>
+</div>
+<p class="chart-key small muted">
+  <span class="key-line"></span>Stock at the end of each day
+  <span class="key-line dashed"></span>Forecast at typical use, counting what is on the way
+  <span class="key-tri"></span>Delivery
+  <span class="key-tri hollow"></span>Due
+</p>
+{%- endmacro %}
+
+{% macro use(c, name) -%}
+{% if c %}
+<div class="chart">
+<svg viewBox="0 0 {{ c.w }} {{ c.h }}" role="img" aria-label="{{ name }}: daily use over the last four weeks">
+  {% for t in c.yticks %}
+  <line x1="{{ c.left }}" x2="{{ c.right }}" y1="{{ t.y }}" y2="{{ t.y }}" class="grid"/>
+  <text x="{{ c.left - 8 }}" y="{{ t.y + 4 }}" class="axis" text-anchor="end">{{ t.label }}</text>
+  {% endfor %}
+  {% for b in c.bars %}
+  <g class="bar {{ 'weekend' if b.weekend }}"><title>{{ b.title }}</title>
+    <rect x="{{ b.x }}" y="{{ c.top }}" width="{{ b.w }}" height="{{ c.base - c.top }}" fill="transparent"/>
+    <path d="{{ b.d }}"/>
+  </g>
+  {% if b.label %}<text x="{{ b.cx }}" y="{{ c.base + 17 }}" class="axis" text-anchor="middle">{{ b.label }}</text>{% endif %}
+  {% endfor %}
+</svg>
+</div>
+{% endif %}
+{%- endmacro %}

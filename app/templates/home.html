@@ -4,78 +4,76 @@
 <div class="eyebrow">{{ my_org.buyer_org }} · {{ me.name }}, {{ me.role|lower }}</div>
 <div class="page-head">
   <h1>Supplies</h1>
-  <form method="post" action="/kitchen/next-day" class="day-form">
-    <span class="day-label">Day {{ day }}</span>
-    <button class="btn secondary" title="Use a day of stock, deliver what is due, and let the agent react">Next day →</button>
-  </form>
+  <div class="head-actions">
+    <span class="day-label">{{ today.strftime("%A") }} {{ today.day }} {{ today.strftime("%B") }}</span>
+    <details class="menu">
+      <summary class="btn secondary">Stock data</summary>
+      <div class="menu-panel">
+        <form method="post" action="/supplies/import" enctype="multipart/form-data" class="import">
+          <label for="stockfile" class="field-label small">Import a stock count (CSV)</label>
+          <input id="stockfile" type="file" name="file" accept=".csv,text/csv,text/plain" required>
+          <button class="btn secondary">Import</button>
+        </form>
+        <a class="small" href="/supplies/export.csv">Download the stock list (CSV)</a>
+        <div class="small muted">Stock systems can send counts to <code>POST /api/stock-counts</code>.
+          Files need an <code>item</code> and an <code>on hand</code> column.</div>
+      </div>
+    </details>
+    <form method="post" action="/kitchen/next-day">
+      <button class="btn secondary" title="Demo: use a day of stock and let the agent react">Next day</button>
+    </form>
+  </div>
 </div>
-<p class="lede">What the kitchen has, and what is on the way. When something runs low, the purchasing agent restocks it
-  from Valio Aimo{% if my_org.approver_name %}, or asks {{ my_org.approver_name }} first where the rule says so{% endif %}.</p>
+<p class="headline" id="headline">{{ headline }}</p>
+<div class="summary">
+  <span>Stock value <strong>{{ stock_value|eur0 }}</strong></span>
+  <span>On order <strong>{{ on_order_value|eur0 }}</strong></span>
+  <span>{% if counted %}Last count {{ counted.label }} · {{ counted.source|lower }}{% else %}No stock count yet{% endif %}</span>
+</div>
+{% if notice %}<div class="notice {{ notice.tone }}" role="status">{{ notice.text }}</div>{% endif %}
 
-<div id="sheet" style="margin-top:20px">{% include "_sheet.html" %}</div>
-<p class="small muted sheet-note" id="sheet-note">
-  {% if manager %}You can change every white cell. Changes save as you leave the cell.
-  {% else %}Record stock counts and daily use in the white cells. Levels and rules are set by {{ my_org.approver_name }}.{% endif %}
-</p>
-
-<section>
-  <div class="section-head"><h2>Need something else?</h2></div>
-  <form class="stack" method="post" action="/requests" id="request-form" style="margin-top:16px">
-    <textarea id="text" name="text" required aria-label="Request" placeholder="I need 1,000 litres of lactose-free milk by Monday."></textarea>
-    <div class="form-foot">
-      <button class="btn" type="submit" id="submit">Send to the agent</button>
-      <span class="small muted">The agent may order up to {{ my_org.limits.per_order_auto_eur|eur }} alone
-        {%- if my_org.hard_constraints.excluded_allergens %}, never with {% for a in my_org.hard_constraints.excluded_allergens %}{{ ALLERGEN_NAMES.get(a, a) }}{{ ", " if not loop.last }}{% endfor %}{% endif %}.
-        <a href="/rules">Purchasing rules</a></span>
-    </div>
-  </form>
-  <ul class="examples" style="margin-top:12px">
-    {% for kind, text in examples %}
-    <li><button type="button" data-example="{{ text }}"><span class="ex-kind">{{ kind }}</span><span class="ex-text">{{ text }}</span></button></li>
-    {% endfor %}
-  </ul>
-</section>
-
-<section>
-  <div class="section-head"><h2>Recent requests</h2><a class="muted" href="/activity">All activity</a></div>
-  {% with rows = recent, empty_text = "No requests yet." %}{% include "_runs_table.html" %}{% endwith %}
-</section>
+<div id="board">{% include "_board.html" %}</div>
 {% endblock %}
 {% block script %}
 <script>
-  const box = document.getElementById("text");
-  document.querySelectorAll("[data-example]").forEach(b => b.addEventListener("click", () => {
-    box.value = b.dataset.example; box.focus();
-  }));
-  document.getElementById("request-form").addEventListener("submit", () => {
-    const btn = document.getElementById("submit");
-    btn.disabled = true; btn.textContent = "Sending…";
+  const board = document.getElementById("board"), headline = document.getElementById("headline");
+  let area = "all";
+
+  function showArea(key) {
+    area = key;
+    board.querySelectorAll("[data-tab]").forEach(t => t.setAttribute("aria-selected", t.dataset.tab === key));
+    board.querySelectorAll("tr[data-area]").forEach(r => r.hidden = key !== "all" && r.dataset.area !== key);
+  }
+  function counting() { return board.querySelector(".stock.counting") !== null; }
+  function progress() {
+    const inputs = [...board.querySelectorAll(".count-input")];
+    const done = inputs.filter(i => i.value.trim() !== "").length;
+    board.querySelector("#count-progress").textContent = `${done} of ${inputs.length} counted`;
+  }
+
+  board.addEventListener("click", e => {
+    const tab = e.target.closest("[data-tab]");
+    if (tab) showArea(tab.dataset.tab);
+    const start = e.target.closest("#start-count");
+    if (start) { board.querySelector(".stock").classList.add("counting"); progress(); board.querySelector(".count-input")?.focus(); }
+    const cancel = e.target.closest("#cancel-count");
+    if (cancel) { board.querySelector(".stock").classList.remove("counting"); board.querySelectorAll(".count-input").forEach(i => i.value = ""); }
+  });
+  board.addEventListener("input", e => { if (e.target.classList.contains("count-input")) progress(); });
+  board.addEventListener("submit", e => {
+    const btn = e.target.querySelector("button[type=submit], button:not([type])");
+    if (btn) { btn.disabled = true; }
   });
 
-  const sheet = document.getElementById("sheet"), note = document.getElementById("sheet-note");
-  const defaultNote = note.innerHTML;
   async function refresh() {
-    if (sheet.contains(document.activeElement) && document.activeElement.classList.contains("cell")) return;
+    if (counting() || board.querySelector("details[open]") || board.contains(document.activeElement) && document.activeElement.matches("input, button")) return;
     try {
       const data = await (await fetch("/supplies/sheet", {cache: "no-store"})).json();
-      sheet.innerHTML = data.html;
+      board.innerHTML = data.board;
+      headline.textContent = data.headline;
+      showArea(area);
     } catch (e) { /* try again on the next tick */ }
   }
-  sheet.addEventListener("change", async e => {
-    const cell = e.target.closest(".cell");
-    if (!cell) return;
-    const id = cell.closest("tr").dataset.id;
-    cell.classList.add("saving");
-    const r = await fetch(`/supplies/${id}`, {method: "POST", headers: {"Content-Type": "application/json"},
-                                              body: JSON.stringify({field: cell.dataset.field, value: cell.value})});
-    const data = await r.json();
-    cell.classList.remove("saving");
-    if (!r.ok) { note.innerHTML = `<span class="bad-text">${data.error}</span>`; cell.classList.add("invalid"); return; }
-    note.innerHTML = defaultNote;
-    cell.blur();
-    refresh();
-  });
-  sheet.addEventListener("keydown", e => { if (e.key === "Enter" && e.target.classList.contains("cell")) e.target.blur(); });
-  setInterval(refresh, 2500);
+  setInterval(refresh, 3000);
 </script>
 {% endblock %}

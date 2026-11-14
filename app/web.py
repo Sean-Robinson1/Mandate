@@ -5,20 +5,23 @@ Or both at once:                          .venv/Scripts/python -m scripts.dev
 """
 from __future__ import annotations
 
+import hmac
 import json
 import logging
 import threading
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
+from urllib.parse import urlencode
 
-from fastapi import FastAPI, Form, HTTPException, Request
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi import FastAPI, Form, Header, HTTPException, Request, UploadFile
+from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
 import settings as config
-from app import agent, keys, kitchen, policy, rules
+from app import agent, charts, keys, kitchen, policy, rules
 from app.audit import AuditEvent, append_event, event_to_dict, events_for_trace, lock_chain, verify_chain
 from app.db import Order, Run, SessionLocal, Step, init_db
 from app.gateway_client import GatewayClient, GatewayError
@@ -154,7 +157,15 @@ def person_name(person_id: str | None) -> str:
     return p.name if p else ""
 
 
-templates.env.filters.update(eur=eur, qty=qty, when=when, day=day, claim=claim_label, person=person_name)
+def on(d: date | None) -> str:
+    return f"{d:%a} {d.day} {d:%b}" if d else "–"
+
+
+templates.env.filters.update(eur=eur, qty=qty, when=when, day=day, claim=claim_label, person=person_name, on=on,
+                             unit=kitchen.unit_label, eur0=lambda v: f"€{v:,.0f}")
+templates.env.globals.update(
+    STOPPED=kitchen.STOPPED, kitchen_short=kitchen.short_name, lead=kitchen.lead_days,
+    supplier_contact=lambda name: kitchen.SUPPLIERS.get(name, {}).get("contact", ""))
 templates.env.globals.update(STATUS=STATUS, ALLERGEN_NAMES=ALLERGEN_NAMES, PEOPLE=PEOPLE, reader=agent.reader_name)
 
 
@@ -247,29 +258,254 @@ def event_summary(e: dict) -> str:
 
 # ---------------------------------------------------------------- pages
 
-def _sheet_context(me) -> dict:
+SOURCE_LABELS = {"day": "Day's use", "count": "Stock count", "import": "Stock file", "api": "Stock system",
+                 "history": "Earlier records"}
+REORDER_CHOICES = [
+    ("off", "Off", "The kitchen orders this item itself."),
+    ("auto", "Agent restocks", "When stock falls below the reorder level, the agent orders up to the 'order up to' "
+                               "level, within the purchasing rules."),
+    ("ask", "Agent asks first", "The agent prepares the order; the purchasing manager approves it before it is sent."),
+]
+WEEK_NOTES = {"school": "none at weekends", "hotel": "busier at weekends"}
+
+
+def _count_label(level, start) -> dict | None:
+    if level is None:
+        return None
+    on = kitchen.date_of(start, level.day)
+    source = {"import": "From a stock file", "api": "From the stock system"}.get(level.source)
+    return {"label": f"{on:%a %d %b}", "source": source or (f"Counted by {person_name(level.by)}" if level.by
+                                                            else "Opening count")}
+
+
+def _and(names: list[str]) -> str:
+    return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
+
+
+def _headline(groups, upcoming, approver: str) -> str:
+    """One sentence saying what needs doing, in place of number tiles."""
+    manual = [kitchen.short_name(g.supplier) for g in groups if not g.agent]
+    waiting = sum(1 for g in groups for r in g.rows if r.open_run and r.open_run.status == "NEEDS_HUMAN")
+    agent = any(g.agent for g in groups)
+    due = sum(1 for i in upcoming if i.due)
+    parts = []
+    if manual:
+        parts.append(f"Order from {_and(manual)} this week.")
+    if agent:
+        tail = (f", and {'one of its orders is' if waiting == 1 else f'{waiting} of its orders are'} "
+                f"waiting for {approver}") if waiting else ""
+        parts.append(f"The agent is handling Valio Aimo{tail}.")
+    if due:
+        parts.append(f"{due} deliver{'y' if due == 1 else 'ies'} to check in.")
+    return " ".join(parts) or "Nothing needs ordering this week."
+
+
+def _dashboard(me) -> dict:
     mandate = MANDATES[me.org_key]
+    approver = agent.approver_name(mandate)
     with SessionLocal() as s:
-        rows = kitchen.sheet(s, me.org_key, agent.approver_name(mandate))
-        day = kitchen.today(s)
-    return {"rows": rows, "day": day, "manager": is_manager(me), "busy": any(r.tone == "busy" for r in rows)}
+        rows = kitchen.sheet(s, me.org_key, approver)
+        day, start = kitchen.calendar(s)
+        upcoming, _ = kitchen.deliveries(s, me.org_key)
+        counted = _count_label(kitchen.last_count(s, me.org_key), start)
+        first = kitchen.use_first(s, me.org_key)
+    groups = kitchen.to_order(rows)
+    with SessionLocal() as s:
+        waiting = s.scalars(select(Run).where(Run.mandate_id == mandate.mandate_id, Run.status == "NEEDS_HUMAN")
+                            .order_by(Run.created_at.desc())).all()
+    areas =[(key, label, [r for r in rows if r.supply.storage == key]) for key, label in kitchen.AREAS.items()]
+    return {"rows": rows, "day": day, "today": kitchen.date_of(start, day), "groups": groups,
+            "upcoming": [i for i in upcoming if i.day <= day + 7], "later": [i for i in upcoming if i.day > day + 7],
+            "use_first": first, "areas": [a for a in areas if a[2]], "counted": counted,
+            "headline": _headline(groups, upcoming, approver), "approver": approver,
+            "stock_value": sum(r.value for r in rows), "on_order_value": sum(i.value for i in upcoming),
+            "manager": is_manager(me), "busy": any(r.tone == "busy" for r in rows),
+            "suggestions": kitchen.suggestions(rows), "waiting": waiting,
+            "waiting_total": sum(r.total_net or 0 for r in waiting), "can_approve": me.id == mandate.approver}
 
 
 @app.get("/", include_in_schema=False)
-def home(request: Request):
+def home(request: Request, imported: int | None = None, unknown: str = "", invalid: str = "", error: str = "",
+         done: str = ""):
     me = current_person(request)
-    with SessionLocal() as s:
-        recent = s.scalars(select(Run).where(Run.mandate_id == MANDATES[me.org_key].mandate_id)
-                           .order_by(Run.created_at.desc()).limit(6)).all()
-    return page(request, "home.html", examples=EXAMPLES, recent=recent, active="supplies", **_sheet_context(me))
+    notice = None
+    if error:
+        notice = {"tone": "bad", "text": error}
+    elif imported is not None:
+        text = f"Updated the stock count for {imported} item{'s' if imported != 1 else ''}."
+        if unknown:
+            text += f" Not recognised, so skipped: {unknown}."
+        if invalid:
+            text += f" Not a valid count: {invalid}."
+        notice = {"tone": "warn" if unknown or invalid else "ok", "text": text}
+    elif done:
+        notice = {"tone": "ok", "text": done}
+    return page(request, "home.html", active="supplies", notice=notice, **_dashboard(me))
 
 
 @app.get("/supplies/sheet", include_in_schema=False)
 def supplies_sheet(request: Request):
-    """The sheet alone, for the page to refresh while the agent works."""
+    """The dashboard's working area, for the page to refresh while the agent works."""
     me = current_person(request)
-    ctx = _sheet_context(me)
-    return JSONResponse({"html": templates.get_template("_sheet.html").render(**ctx), "busy": ctx["busy"]})
+    ctx = {**_dashboard(me), "me": me, "my_org": MANDATES[me.org_key]}
+    return JSONResponse({"board": templates.get_template("_board.html").render(**ctx),
+                         "headline": ctx["headline"], "busy": ctx["busy"]})
+
+
+def _back(**params) -> RedirectResponse:
+    return RedirectResponse("/?" + urlencode({k: v[:300] for k, v in params.items()}), status_code=303)
+
+
+@app.post("/supplies/agent-order", include_in_schema=False)
+async def agent_order(request: Request):
+    """Ask the agent to order one or more items now. Each still goes through the mandate's checks."""
+    me = current_person(request)
+    form = await request.form()
+    ids = [int(v) for v in form.getlist("item") if str(v).isdigit()][:20]
+    mandate, started, errors = MANDATES[me.org_key], [], []
+    with _restock_lock, SessionLocal() as s:
+        for supply_id in ids:
+            try:
+                r = kitchen.agent_order(s, me.org_key, supply_id, str(form.get(f"qty-{supply_id}", "")))
+            except ValueError as e:
+                errors.append(str(e))
+                continue
+            trace_id = agent.open_run(s, r.text, mandate, requested_by=me.id, supply_id=r.supply_id, trigger=r.trigger)
+            threading.Thread(target=_work, args=(trace_id, r.text, mandate, r.review_reason), daemon=True).start()
+            started.append(trace_id)
+    if len(started) == 1 and not errors:
+        return RedirectResponse(f"/requests/{started[0]}", status_code=303)
+    if errors and not started:
+        return _back(error="; ".join(errors).capitalize() + ".")
+    return _back(done=f"The agent is ordering {len(started)} item{'s' if len(started) != 1 else ''}."
+                      + (f" Not started: {'; '.join(errors)}." if errors else ""))
+
+
+@app.post("/supplies/{supply_id}/ordered", include_in_schema=False)
+def mark_ordered(request: Request, supply_id: int, quantity: str = Form("")):
+    me = current_person(request)
+    with SessionLocal() as s:
+        try:
+            d = kitchen.mark_ordered(s, me.org_key, supply_id, me.id, quantity)
+        except ValueError as e:
+            return _back(error=str(e).capitalize() + ".")
+        supply, (day, start) = s.get(kitchen.Supply, supply_id), kitchen.calendar(s)
+        when = on(kitchen.date_of(start, d.due_day))
+    return _back(done=f"Marked {d.quantity:,g} {kitchen.unit_label(supply.unit)} of {supply.name.lower()} as ordered "
+                      f"from {supply.supplier}, due {when}.")
+
+
+@app.post("/deliveries/{key}/check-in", include_in_schema=False)
+def check_in(request: Request, key: str):
+    me = current_person(request)
+    with SessionLocal() as s:
+        try:
+            supply = kitchen.check_in(s, me.org_key, key, me.id)
+        except ValueError as e:
+            return _back(error=str(e).capitalize() + ".")
+    start_restocks(me.org_key)
+    return _back(done=f"Checked in. {supply.name} now has {qty(supply.on_hand)} {kitchen.unit_label(supply.unit)}.")
+
+
+@app.post("/supplies/count", include_in_schema=False)
+async def save_count(request: Request):
+    me = current_person(request)
+    form = await request.form()
+    counts = {int(k[6:]): str(v) for k, v in form.items() if k.startswith("count-") and k[6:].isdigit()}
+    with SessionLocal() as s:
+        result = kitchen.save_count(s, me.org_key, counts, me.id)
+    start_restocks(me.org_key)
+    return _back(imported=str(len(result.updated)), invalid="; ".join(result.invalid[:5]))
+
+
+@app.get("/supplies/export.csv", include_in_schema=False)
+def export_supplies(request: Request):
+    me = current_person(request)
+    with SessionLocal() as s:
+        csv_text = kitchen.export_csv(kitchen.sheet(s, me.org_key))
+    return Response(csv_text, media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="stock-{me.org_key}.csv"'})
+
+
+@app.post("/supplies/import", include_in_schema=False)
+async def import_supplies(request: Request, file: UploadFile):
+    me = current_person(request)
+    data = await file.read(1_000_001)
+    if len(data) > 1_000_000:
+        return _back(error="The file was not imported: it is larger than 1 MB.")
+    try:
+        counts = kitchen.parse_stock_file(data)
+    except ValueError as e:
+        return _back(error=f"The file was not imported: {e}.")
+    with SessionLocal() as s:
+        result = kitchen.import_counts(s, me.org_key, counts, "import", me.id)
+    start_restocks(me.org_key)
+    return RedirectResponse("/?" + urlencode({"imported": len(result.updated),
+                                              "unknown": ", ".join(result.unknown[:10])[:300],
+                                              "invalid": "; ".join(result.invalid[:5])[:300]}), status_code=303)
+
+
+class StockCount(BaseModel):
+    item: str = Field(min_length=1, max_length=120)
+    on_hand: float | str
+
+
+class StockCounts(BaseModel):
+    kitchen: str = Field(max_length=20)
+    counts: list[StockCount] = Field(max_length=1000)
+
+
+@app.post("/api/stock-counts", tags=["stock"], summary="Receive stock counts from a kitchen's own stock system")
+def receive_stock_counts(body: StockCounts, authorization: str = Header(default="")):
+    """Counts are matched to items by name. Unknown names and invalid numbers are reported back, never added."""
+    if not config.STOCK_API_TOKEN:
+        raise HTTPException(503, "stock system connection is not set up (STOCK_API_TOKEN)")
+    if not hmac.compare_digest(authorization.encode(), f"Bearer {config.STOCK_API_TOKEN}".encode()):
+        raise HTTPException(401, "invalid token")
+    if body.kitchen not in MANDATES:
+        raise HTTPException(404, "unknown kitchen")
+    with SessionLocal() as s:
+        result = kitchen.import_counts(s, body.kitchen, [(c.item, c.on_hand) for c in body.counts], "api",
+                                       "stock-system")
+    start_restocks(body.kitchen)
+    return {"updated": result.updated, "unknown": result.unknown, "invalid": result.invalid}
+
+
+def _my_supply(s, me, supply_id: int):
+    supply = s.get(kitchen.Supply, supply_id)
+    if supply is None or supply.org_key != me.org_key:
+        raise HTTPException(404, "no such item in your kitchen")
+    return supply
+
+
+@app.get("/supplies/{supply_id}", include_in_schema=False)
+def item_page(request: Request, supply_id: int, error: str = "", saved: str = ""):
+    me = current_person(request)
+    mandate = MANDATES[me.org_key]
+    with SessionLocal() as s:
+        supply = _my_supply(s, me, supply_id)
+        row = next(r for r in kitchen.sheet(s, me.org_key, agent.approver_name(mandate)) if r.supply.id == supply_id)
+        day, start = kitchen.calendar(s)
+        arrivals = [i for i in kitchen.incoming(s, [supply], day, start) if i.day > day - kitchen.HISTORY_DAYS]
+    return page(request, "item.html", active="supplies", row=row, incoming=arrivals, manager=is_manager(me),
+                chart=charts.stock_chart(row, day, start, arrivals), use=charts.use_chart(row, start),
+                date_of=lambda d: kitchen.date_of(start, d), min_due=kitchen.date_of(start, day + 1).isoformat(),
+                error=error, saved=saved, SOURCE_LABELS=SOURCE_LABELS, REORDER_CHOICES=REORDER_CHOICES,
+                WEEK_NOTE=WEEK_NOTES.get(me.org_key, ""))
+
+
+@app.post("/supplies/{supply_id}/orders", include_in_schema=False)
+def record_order(request: Request, supply_id: int, quantity: str = Form(...), due: str = Form(...),
+                 reference: str = Form("")):
+    me = current_person(request)
+    with SessionLocal() as s:
+        supply = _my_supply(s, me, supply_id)
+        try:
+            kitchen.record_order(s, supply, quantity, due, me.id, reference)
+        except ValueError as e:
+            return RedirectResponse(f"/supplies/{supply_id}?" + urlencode({"error": str(e).capitalize() + "."}),
+                                    status_code=303)
+    return RedirectResponse(f"/supplies/{supply_id}?saved=Order+recorded.", status_code=303)
 
 
 @app.post("/supplies/{supply_id}", include_in_schema=False)
@@ -279,7 +515,7 @@ async def edit_supply(request: Request, supply_id: int):
     with SessionLocal() as s:
         supply = s.get(kitchen.Supply, supply_id)
         if supply is None or supply.org_key != me.org_key:
-            return JSONResponse({"error": "not your kitchen's sheet"}, status_code=403)
+            return JSONResponse({"error": "not your kitchen's item"}, status_code=403)
         try:
             kitchen.update_cell(s, supply_id, str(body.get("field")), str(body.get("value")), me.id, is_manager(me))
         except PermissionError as e:
@@ -412,7 +648,7 @@ def approvals(request: Request):
 def activity(request: Request):
     with SessionLocal() as s:
         rows = s.scalars(select(Run).order_by(Run.created_at.desc()).limit(200)).all()
-    return page(request, "activity.html", rows=rows, active="activity")
+    return page(request, "activity.html", rows=rows, examples=EXAMPLES, active="activity")
 
 
 @app.get("/mandates", include_in_schema=False)

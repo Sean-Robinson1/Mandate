@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% from "_charts.html" import stock, use as use_bars %}
+{% block title %}{{ row.supply.name }} · Supplies · Trusted Trade{% endblock %}
+{% block content %}{% set s = row.supply %}
+<div class="eyebrow"><a href="/">Supplies</a> · {{ s.category }} · {{ s.supplier }}</div>
+<div class="page-head">
+  <h1>{{ s.name }}</h1>
+  <span class="status {{ row.tone }}"><span class="dot"></span>{% if row.link and row.open_run %}<a href="/requests/{{ row.link }}">{{ row.status }}</a>{% else %}{{ row.status }}{% endif %}</span>
+</div>
+
+{% if error %}<div class="notice bad" role="alert">{{ error }}</div>{% endif %}
+{% if saved %}<div class="notice ok" role="status">{{ saved }}</div>{% endif %}
+
+<dl class="facts" style="margin-top:20px">
+  <div><dt>On hand</dt><dd>{{ s.on_hand|qty }} {{ row.unit }}</dd></div>
+  <div><dt>Use per day</dt><dd>{{ row.avg_use|qty }} {{ row.unit }} <span class="muted">last 7 days</span></dd></div>
+  <div><dt>Runs out</dt><dd>{% if row.runs_out_on %}{{ row.runs_out_on|on }} <span class="muted">in {{ row.days_left }} days</span>{% else %}Not in the next 3 weeks{% endif %}</dd></div>
+  <div><dt>Next delivery</dt><dd>{% if row.expected %}{{ row.expected[0].on|on }} <span class="muted">{{ row.expected[0].quantity|qty }} {{ row.unit }}</span>{% else %}None on order{% endif %}</dd></div>
+</dl>
+
+<section>
+  <div class="section-head"><h2>Stock level</h2><span class="muted">Last 4 weeks and the next 3</span></div>
+  {{ stock(chart, s.name) }}
+  <details>
+    <summary class="small">Show as a table</summary>
+    <div class="table-scroll"><table>
+      <thead><tr><th>Day</th><th class="num">Used</th><th class="num">Received</th><th class="num">On hand at close</th><th>Figure from</th></tr></thead>
+      <tbody>{% for l in row.history|reverse %}
+        <tr><td>{{ date_of(l.day)|on }}</td><td class="num">{{ l.used|qty }}</td><td class="num">{{ l.received|qty if l.received else "" }}</td>
+          <td class="num">{{ l.on_hand|qty }} {{ row.unit }}</td><td class="muted">{{ SOURCE_LABELS.get(l.source, l.source) }}{% if l.by %}, {{ l.by|person or l.by }}{% endif %}</td></tr>
+      {% endfor %}</tbody>
+    </table></div>
+  </details>
+</section>
+
+<section>
+  <div class="section-head"><h2>Daily use</h2><span class="muted">Typical day: {{ s.daily_use|qty }} {{ row.unit }}{% if WEEK_NOTE %}, {{ WEEK_NOTE }}{% endif %}</span></div>
+  {{ use_bars(use, s.name) }}
+</section>
+
+<div class="item-grid">
+  <section>
+    <div class="section-head"><h2>Levels</h2></div>
+    <div class="settings" data-id="{{ s.id }}">
+      <div class="rule-field"><label for="f-on_hand">On hand (stock count)</label>
+        <span class="cell-wrap"><input id="f-on_hand" class="cell" data-field="on_hand" value="{{ s.on_hand|qty }}" inputmode="decimal"><span class="unit">{{ row.unit }}</span></span></div>
+      <div class="rule-field"><label for="f-daily_use">Use on a typical day</label>
+        <span class="cell-wrap"><input id="f-daily_use" class="cell" data-field="daily_use" value="{{ s.daily_use|qty }}" inputmode="decimal"><span class="unit">{{ row.unit }}</span></span></div>
+      <div class="rule-field"><label for="f-reorder_below">Reorder when below</label>
+        {% if manager %}<span class="cell-wrap"><input id="f-reorder_below" class="cell" data-field="reorder_below" value="{{ s.reorder_below|qty }}" inputmode="decimal"><span class="unit">{{ row.unit }}</span></span>
+        {% else %}<span>{{ s.reorder_below|qty }} {{ row.unit }}</span>{% endif %}</div>
+      <div class="rule-field"><label for="f-order_up_to">Order up to</label>
+        {% if manager %}<span class="cell-wrap"><input id="f-order_up_to" class="cell" data-field="order_up_to" value="{{ s.order_up_to|qty }}" inputmode="decimal"><span class="unit">{{ row.unit }}</span></span>
+        {% else %}<span>{{ s.order_up_to|qty }} {{ row.unit }}</span>{% endif %}</div>
+    </div>
+    <p class="small muted sheet-note" id="sheet-note">{% if manager %}Changes save when you leave the field.{% else %}Levels are set by {{ my_org.approver_name }}.{% endif %}</p>
+  </section>
+
+  <section>
+    <div class="section-head"><h2>Automatic reordering</h2></div>
+    {% if row.connected %}
+    <div class="settings" data-id="{{ s.id }}">
+      {% if manager %}
+      <fieldset class="choices">
+        <legend class="sr-only">Automatic reordering for {{ s.name }}</legend>
+        {% for value, title, text in REORDER_CHOICES %}
+        <label class="choice"><input type="radio" class="cell" name="rule" data-field="rule" value="{{ value }}" {% if s.rule == value %}checked{% endif %}>
+          <span><strong>{{ title }}</strong><span class="sub">{{ text }}</span></span></label>
+        {% endfor %}
+      </fieldset>
+      {% else %}
+      {% for value, title, text in REORDER_CHOICES if value == s.rule %}<p><strong>{{ title }}</strong><span class="sub">{{ text }}</span></p>{% endfor %}
+      <p class="small muted">Set by {{ my_org.approver_name }}.</p>
+      {% endif %}
+    </div>
+    <p class="small muted" style="margin-top:10px">{{ s.supplier }} has an ordering gateway, so the purchasing agent can order this item as
+      “{{ s.ask_as }}”. Every order is checked against the <a href="/rules">signed purchasing rules</a>.</p>
+    {% else %}
+    <p class="muted" style="margin-top:12px">Not available: {{ s.supplier }} does not offer an ordering gateway for purchasing agents.
+      Record your orders below so they show up as deliveries.</p>
+    {% endif %}
+  </section>
+</div>
+
+<section>
+  <div class="section-head"><h2>Orders and deliveries</h2></div>
+  {% if incoming %}
+  <div class="table-scroll"><table>
+    <thead><tr><th>Delivery day</th><th class="num">Quantity</th><th>Supplier</th><th>Ordered</th><th>Status</th></tr></thead>
+    <tbody>{% for i in incoming|reverse %}
+      <tr><td>{{ i.on|on }}</td><td class="num">{{ i.quantity|qty }} {{ row.unit }}</td><td>{{ i.supplier }}</td>
+        <td>{% if i.via == "agent" %}<a href="/requests/{{ i.link }}">By the agent</a>{% else %}Recorded{% endif %}{% if i.reference %}<span class="sub mono">{{ i.reference }}</span>{% endif %}</td>
+        <td><span class="status {{ 'busy' if i.status == 'EXPECTED' else 'ok' }}"><span class="dot"></span>{{ "On the way" if i.status == "EXPECTED" else "Received" }}</span></td></tr>
+    {% endfor %}</tbody>
+  </table></div>
+  {% else %}<p class="empty">No orders in the last four weeks.</p>{% endif %}
+
+  <form method="post" action="/supplies/{{ s.id }}/orders" class="record">
+    <h3 class="sub-head">Record an order placed elsewhere</h3>
+    <div class="record-fields">
+      <label>Quantity<span class="cell-wrap"><input type="text" name="quantity" inputmode="decimal" required><span class="unit">{{ row.unit }}</span></span></label>
+      <label>Delivery day<input type="date" name="due" min="{{ min_due }}" required></label>
+      <label>Supplier's reference<input type="text" name="reference" maxlength="80" placeholder="optional"></label>
+      <button class="btn secondary">Record order from {{ s.supplier }}</button>
+    </div>
+  </form>
+</section>
+{% endblock %}
+{% block script %}
+<script src="/static/charts.js"></script>
+<script>
+  const note = document.getElementById("sheet-note");
+  document.querySelectorAll(".settings").forEach(box => {
+    box.addEventListener("change", async e => {
+      const cell = e.target.closest(".cell");
+      if (!cell) return;
+      cell.classList.add("saving");
+      const r = await fetch(`/supplies/${box.dataset.id}`, {method: "POST", headers: {"Content-Type": "application/json"},
+                                                            body: JSON.stringify({field: cell.dataset.field, value: cell.value})});
+      const data = await r.json();
+      cell.classList.remove("saving");
+      if (!r.ok) { note.innerHTML = `<span class="bad-text"></span>`; note.firstChild.textContent = data.error; cell.classList.add("invalid"); return; }
+      location.reload();
+    });
+    box.addEventListener("keydown", e => { if (e.key === "Enter" && e.target.classList.contains("cell")) e.target.blur(); });
+  });
+</script>
+{% endblock %}
