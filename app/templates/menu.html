@@ -2,35 +2,84 @@
 {% block title %}Menu · Trusted Trade{% endblock %}
 {% block content %}
 <div class="eyebrow">{{ my_org.buyer_org }} · {{ me.name }}, {{ me.role|lower }}</div>
-<div class="page-head"><h1>Menu</h1></div>
-<p class="lede">What each dish costs to make at today's prices, from its recipe and the kitchen's stock. A healthy
-  food cost is {{ (target[0] * 100)|round|int }}–{{ (target[1] * 100)|round|int }}% of the price before VAT.</p>
+<div class="page-head"><h1>Menu and margins</h1></div>
+<p class="lede">What each dish costs to make at today's prices, what it earns, and what ingredient price changes do
+  to it. Margins are worked out on the price before VAT.</p>
 <div class="summary">
   <span>{{ views|length }} dishes</span>
-  {% if week_pct is not none %}<span>Food cost over the last 7 days <strong>{{ week_pct }}%</strong> · {{ sold }} portions sold</span>
+  {% if week_pct is not none %}
+  <span>Last 7 days: <strong>{{ net_week|eur0 }}</strong> sales before VAT · gross margin <strong>{{ margin_week|eur0 }}</strong>
+    ({{ (100 - week_pct)|round(1) }}%) · {{ sold }} portions</span>
   {% else %}<span>No sales yet: press <strong>Next day</strong> on Supplies to run a day's service</span>{% endif %}
+  {% if not can_price %}<span class="muted">Only {{ approver }} can change menu prices</span>{% endif %}
 </div>
+{% if notice %}<div class="notice {{ notice.tone }}" role="status">{{ notice.text }}</div>{% endif %}
+
+{% if impact or below %}
+<div class="work menu-insights">
+  <section class="card" aria-labelledby="h-impact">
+    <div class="card-head"><h2 id="h-impact">Price changes and your dishes</h2><a class="small" href="/prices">Prices →</a></div>
+    {% for a in impact[:4] %}
+    <div class="impact">
+      <p class="impact-head"><strong>{{ a.supply }}</strong>
+        <span class="{{ 'bad-text' if a.rising else 'ok-text' }}">{{ "up" if a.rising else "down" }} {{ a.change_pct|abs }}%</span>
+        <span class="muted">{{ a.old_price|eur }} → {{ a.new_price|eur }}/{{ a.unit|unit }} since {{ day_on(a.since_day)|on }}</span></p>
+      <p class="small">{% if a.week %}About {{ a.week|abs|eur0 }} {{ "more" if a.week > 0 else "less" }} a week across {{ a.dishes|length }} dish{{ "es" if a.dishes|length != 1 }}{% else %}Used in {{ a.dishes|length }} dish{{ "es" if a.dishes|length != 1 }}{% endif %}:</p>
+      <ul class="impact-dishes">
+        {% for d in a.dishes[:4] %}<li><a href="#dish-{{ d.id }}">{{ d.dish }}</a> <span class="muted">margin {{ d.before }}% → </span><span class="{{ 'warn-text' if d.below }}">{{ d.after }}%</span></li>{% endfor %}
+      </ul>
+    </div>
+    {% else %}
+    <p class="empty-note">No ingredient in your recipes moved more than 3% in the last two weeks.</p>
+    {% endfor %}
+  </section>
+  <section class="card" aria-labelledby="h-below">
+    <div class="card-head"><h2 id="h-below">Below their target margin</h2><span class="small muted">{{ below|length }} of {{ views|length }}</span></div>
+    {% for v in below[:6] %}
+    <div class="line flush">
+      <div class="line-main"><a class="item-link" href="#dish-{{ v.dish.id }}">{{ v.dish.name }}</a>
+        <span class="sub">Margin {{ v.margin_pct }}%, aim {{ v.target|round|int }}% · {{ v.dish.price|eur }} now</span></div>
+      <div class="line-act">
+        {% if can_price %}
+        <form method="post" action="/menu/dishes/{{ v.dish.id }}/price"><input type="hidden" name="price" value="{{ v.suggested_price }}">
+          <button class="btn secondary small-btn" title="Lowest price that reaches the target margin">Set to {{ v.suggested_price|eur }}</button></form>
+        {% else %}<span class="small">Suggested {{ v.suggested_price|eur }}</span>{% endif %}
+      </div>
+    </div>
+    {% else %}
+    <p class="empty-note">Every dish reaches its target margin.</p>
+    {% endfor %}
+  </section>
+</div>
+{% endif %}
 
 {% for label, items in groups %}
 <section class="card menu-card" aria-labelledby="h-{{ loop.index }}">
-  <div class="card-head"><h2 id="h-{{ loop.index }}">{{ label }}</h2></div>
+  <div class="card-head"><h2 id="h-{{ loop.index }}">{{ label }}</h2>
+    <span class="small muted">Target margin {{ items[0].target|round|int }}%</span></div>
   <div class="table-scroll">
   <table class="dish-table">
-    <colgroup><col class="c-dish"><col class="c-n"><col class="c-n2"><col class="c-n"><col class="c-n"><col class="c-n2"><col class="c-all"></colgroup>
+    <colgroup><col class="c-dish"><col class="c-price"><col class="c-n"><col class="c-n2"><col class="c-n"><col class="c-n"><col class="c-all"></colgroup>
     <thead><tr>
-      <th>Dish</th><th class="num">Price</th><th class="num">Cost per portion</th><th class="num">Food cost</th>
-      <th class="num">Margin</th><th class="num">Sold, 7 days</th><th>Allergens</th>
+      <th>Dish</th><th class="num">Menu price</th><th class="num">Cost</th><th class="num">Margin</th>
+      <th class="num">Sold, 7 days</th><th class="num">Earned, 7 days</th><th>Allergens</th>
     </tr></thead>
     <tbody>
     {% for v in items %}
-      <tr class="dish-row">
+      <tr class="dish-row" id="dish-{{ v.dish.id }}">
         <td><button type="button" class="dish-toggle" aria-expanded="false" aria-controls="r-{{ v.dish.id }}">
           <span class="caret" aria-hidden="true"></span>{{ v.dish.name }}</button></td>
-        <td class="num">{{ v.dish.price|eur }}</td>
+        <td class="num">{% if can_price %}
+          <form method="post" action="/menu/dishes/{{ v.dish.id }}/price" class="price-form">
+            <span class="euro" aria-hidden="true">€</span><input name="price" value="{{ '%.2f'|format(v.dish.price) }}" inputmode="decimal"
+              aria-label="Menu price of {{ v.dish.name }}, euros with VAT" data-was="{{ '%.2f'|format(v.dish.price) }}">
+            <button class="btn small-btn" hidden>Save</button></form>
+          {% else %}{{ v.dish.price|eur }}{% endif %}</td>
         <td class="num">{{ v.cost|eur }}</td>
-        <td class="num"><span class="chip {{ v.tone }}">{{ v.food_cost_pct }}%</span></td>
-        <td class="num">{{ v.margin|eur }}</td>
+        <td class="num"><span class="chip {{ 'warn' if v.below_target else 'ok' }}">{{ v.margin_pct }}%</span>
+          {% if v.below_target %}<span class="sub">aim {{ v.target|round|int }}% · {{ v.suggested_price|eur }} would reach it</span>{% endif %}</td>
         <td class="num">{{ v.sold_week or "–" }}</td>
+        <td class="num">{{ v.profit_week|eur0 if v.sold_week else "–" }}</td>
         <td>{% for a in v.allergens %}<span class="allergen">{{ ALLERGEN_NAMES.get(a, a) }}</span>{% else %}<span class="muted small">none declared</span>{% endfor %}</td>
       </tr>
       <tr class="recipe-row" id="r-{{ v.dish.id }}" hidden>
@@ -56,8 +105,9 @@
                 <td></td><td></td><td></td><td class="num">{{ v.dish.extras|eur }}</td></tr>
             {% endif %}
             </tbody>
-            <tfoot><tr><td colspan="4">Price before VAT {{ v.net_price|eur }} ({{ (vat * 100)|round(1) }}% VAT) · cost {{ v.cost|eur }}</td>
-              <td class="num"><strong>{{ v.food_cost_pct }}%</strong></td></tr></tfoot>
+            <tfoot><tr><td colspan="4">Price before VAT {{ v.net_price|eur }} ({{ (vat * 100)|round(1) }}% VAT) · cost {{ v.cost|eur }}
+              · food cost {{ v.food_cost_pct }}%</td>
+              <td class="num"><strong>{{ v.margin|eur }}</strong></td></tr></tfoot>
           </table>
         </td>
       </tr>
@@ -77,5 +127,10 @@
     b.setAttribute("aria-expanded", open);
     document.getElementById(b.getAttribute("aria-controls")).hidden = !open;
   });
+  // A menu price shows its Save button only once it has been changed.
+  document.querySelectorAll(".price-form input").forEach(i => i.addEventListener("input", () => {
+    i.form.querySelector("button").hidden = i.value.trim() === i.dataset.was;
+  }));
+  if (location.search) history.replaceState(null, "", "/menu" + location.hash);
 </script>
 {% endblock %}

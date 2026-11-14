@@ -25,7 +25,7 @@ def test_portion_cost_counts_trimming_and_extras_at_list_prices(db):
         v = dish(s, "Creamy salmon soup")
         salmon = next(i for i in v.ingredients if i.supply.name == "Salmon fillet")
         assert salmon.used == pytest.approx(0.14 / 0.9, abs=1e-4)          # 90% usable after trimming
-        assert salmon.price.source == "list price"
+        assert salmon.price.source == "recent price"                      # from the recorded price history
         assert v.cost == round(sum(i.cost for i in v.ingredients) + v.dish.extras, 2)
         assert v.food_cost_pct == round(100 * v.cost / round(17.5 / (1 + menu.VAT), 2), 1)
 
@@ -58,3 +58,44 @@ def test_service_uses_recipes_and_a_dish_sells_out_when_an_ingredient_runs_short
     assert 0 <= salmon.on_hand < 0.16                                    # used down to less than one portion
     served_salmon = sum(x.quantity for x in sales if x.served and "salmon" in names[x.dish_id].lower())
     assert served_salmon >= 1
+
+
+# ---------------------------------------------------------------- margins (ported from the menu-margins branch)
+
+def test_suggested_price_reaches_the_target_margin_rounded_up_to_50_cents():
+    # 2.20 to plate at a 70% target: 7.33 before VAT, 8.32 with 13.5% VAT, rounded up to 8.50.
+    assert menu.suggested_price(2.20, 70) == 8.5
+    assert menu.suggested_price(0, 70) == 0
+
+
+def test_a_dish_below_its_target_gets_a_suggested_price(db):
+    with db.buyer_db() as s:
+        reindeer = dish(s, "Sautéed reindeer, mash, lingonberries")
+        coffee = dish(s, "Coffee")
+    assert reindeer.below_target and reindeer.target == 70
+    net = reindeer.suggested_price / (1 + menu.VAT)
+    assert 100 * (1 - reindeer.cost / net) >= 70                          # the suggestion really reaches the target
+    assert coffee.target == 85                                             # drinks aim higher than mains
+
+
+def test_menu_price_changes_are_checked_and_audited(db):
+    from app.audit import AuditEvent
+    with db.buyer_db() as s:
+        soup = dish(s, "Creamy salmon soup").dish
+        for bad in ("0", "abc", "250"):
+            with pytest.raises(ValueError):
+                menu.set_menu_price(s, "restaurant", soup.id, bad, "jussi.heikkinen")
+        with pytest.raises(ValueError, match="no such dish"):
+            menu.set_menu_price(s, "hotel", soup.id, "20", "mikko.laine")   # another kitchen's dish
+        changed, old = menu.set_menu_price(s, "restaurant", soup.id, "18,90", "jussi.heikkinen")
+        event = s.scalar(select(AuditEvent).where(AuditEvent.event_type == "menu.price_changed"))
+    assert (changed.price, old) == (18.9, 17.5) and event is not None
+
+
+def test_a_price_rise_shows_which_dishes_lose_margin(db):
+    with db.buyer_db() as s:
+        views = menu.dishes(s, "restaurant", today=kitchen.today(s))
+        impact = {a["supply"]: a for a in menu.price_impact(s, "restaurant", views)}
+    cream = impact["Cream"]                                               # seeded +12% three days ago
+    assert cream["rising"] and {d["dish"] for d in cream["dishes"]} >= {"Crème brûlée", "Chanterelle pasta"}
+    assert all(d["after"] < d["before"] for d in cream["dishes"]) and cream["week"] > 0

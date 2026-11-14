@@ -13,6 +13,7 @@ Only kitchens listed in MENUS have a menu; the others keep using a typical day's
 from __future__ import annotations
 
 import json
+import math
 import random
 from dataclasses import dataclass, field
 from datetime import date, timedelta
@@ -20,10 +21,14 @@ from datetime import date, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db import Dish, Order, RecipeLine, Run, Sale, Supply
+from app.db import Dish, Order, PriceRecord, RecipeLine, Run, Sale, SimState, Supply
 
 VAT = 0.135                 # shortcut: Finnish VAT on restaurant food; drinks with alcohol differ (none on this menu)
 FOOD_COST_TARGET = (0.28, 0.35)
+# Gross margin each course aims for: drinks and desserts carry more margin than mains, as on real menus.
+TARGETS = {"starter": 72.0, "main": 70.0, "dessert": 80.0, "drink": 85.0}
+PRICE_STEP = 0.5            # suggested menu prices round up to this
+PRICE_RANGE = (1.0, 200.0)  # a menu price outside this is a typo
 CATEGORIES = {"starter": "Starters", "main": "Mains", "dessert": "Desserts", "drink": "Drinks"}
 
 # name, category, price € with VAT, weight within its category, extras € per portion (oil, seasoning, garnish:
@@ -85,7 +90,7 @@ def seed(session: Session) -> None:
             continue
         for i, (name, category, price, weight, extras, lines) in enumerate(dishes):
             dish = Dish(org_key=org, name=name, category=category, price=price, weight=weight, extras=extras,
-                        position=i)
+                        target_margin_pct=TARGETS.get(category, 70.0), position=i)
             session.add(dish)
             session.flush()
             for supply_name, quantity, yield_pct in lines:
@@ -121,15 +126,30 @@ def _last_orders(session: Session, supply_ids: list[int]) -> dict[int, tuple[Ord
 
 
 def prices(session: Session, supplies: list[Supply]) -> dict[int, Price]:
-    """What each supply costs per unit now: the last confirmed Valio Aimo price, else the list price."""
-    last = _last_orders(session, [s.id for s in supplies])
+    """What each supply costs per unit now, best evidence first: a price Valio Aimo signed for the product in use
+    (kept by app/prices.py), the last order Valio Aimo confirmed, the recorded price history, the list price."""
+    ids = [s.id for s in supplies]
+    state = session.get(SimState, 1)
+    today = state.day if state else 1
+    latest: dict[int, PriceRecord] = {}
+    for r in session.scalars(select(PriceRecord).where(PriceRecord.supply_id.in_(ids), PriceRecord.in_use.is_(True),
+                                                       PriceRecord.day <= today)):
+        best = latest.get(r.supply_id)
+        if best is None or (r.day, r.source == "valio", r.id) > (best.day, best.source == "valio", best.id):
+            latest[r.supply_id] = r
+    last = _last_orders(session, ids)
     out = {}
     for s in supplies:
-        order, lines = last.get(s.id, (None, []))
+        rec, (order, lines) = latest.get(s.id), last.get(s.id, (None, []))
         measure = _measure(lines)
-        if order is not None and measure > 0:
+        link = order.trace_id if order is not None else None
+        if rec is not None and rec.source == "valio":
+            out[s.id] = Price(round(rec.unit_price, 4), "Valio Aimo's signed price", link)
+        elif order is not None and measure > 0:
             out[s.id] = Price(round(order.total_net / measure, 4),
-                              f"Valio Aimo order {order.supplier_order_id or order.order_id}", order.trace_id)
+                              f"Valio Aimo order {order.supplier_order_id or order.order_id}", link)
+        elif rec is not None:
+            out[s.id] = Price(round(rec.unit_price, 4), "recent price")
         else:
             out[s.id] = Price(s.unit_cost or 0.0, "list price")
     return out
@@ -185,6 +205,76 @@ class DishView:
     def tone(self) -> str:
         pct = self.food_cost_pct / 100
         return "ok" if pct <= FOOD_COST_TARGET[1] else "warn" if pct <= FOOD_COST_TARGET[1] + 0.05 else "bad"
+
+    @property
+    def margin_pct(self) -> float:
+        """Gross margin: what is left of the price before VAT after the ingredients."""
+        return round(100 - self.food_cost_pct, 1)
+
+    @property
+    def target(self) -> float:
+        return self.dish.target_margin_pct or TARGETS.get(self.dish.category, 70.0)
+
+    @property
+    def below_target(self) -> bool:
+        return self.margin_pct < self.target
+
+    @property
+    def suggested_price(self) -> float | None:
+        """The lowest menu price that reaches the target margin, when the dish is below it."""
+        return suggested_price(self.cost, self.target) if self.below_target else None
+
+    @property
+    def profit_week(self) -> float:
+        return round(self.margin * self.sold_week, 2)
+
+
+def suggested_price(cost: float, target_pct: float) -> float:
+    """The lowest menu price (with VAT, rounded up to €0.50) that earns the target margin on this portion cost."""
+    net = cost / (1 - min(target_pct, 99.0) / 100)
+    return math.ceil(net * (1 + VAT) / PRICE_STEP - 1e-9) * PRICE_STEP
+
+
+def set_menu_price(session: Session, org_key: str, dish_id: int, price, person_id: str) -> tuple[Dish, float]:
+    """Change a dish's menu price (with VAT), recorded in the audit log. Returns the dish and its old price.
+    Raises ValueError with a message for the person."""
+    from app.audit import append_event                      # here: audit is only needed for this write
+    dish = session.get(Dish, dish_id)
+    if dish is None or dish.org_key != org_key:
+        raise ValueError("no such dish on your menu")
+    try:
+        value = float(str(price).replace("€", "").replace(",", ".").strip())
+    except ValueError:
+        raise ValueError("enter a price in euros, for example 24.50") from None
+    low, high = PRICE_RANGE
+    if not math.isfinite(value) or not low <= value <= high:
+        raise ValueError(f"enter a price between €{low:.2f} and €{high:.2f}")
+    old = dish.price
+    dish.price, dish.updated_by = round(value, 2), person_id
+    append_event(session, trace_id=f"menu-{org_key}", actor=person_id, event_type="menu.price_changed",
+                 payload={"dish": dish.name, "old_price": old, "new_price": dish.price})
+    session.commit()
+    return dish, old
+
+
+def price_impact(session: Session, org_key: str, views: list[DishView]) -> list[dict]:
+    """Recent ingredient price moves (app/prices.py) and what each did to the dishes that use the ingredient."""
+    from app import prices as price_history                  # here, not at the top: prices imports kitchen
+    out = []
+    for a in price_history.overview(session, org_key)["alerts"]:
+        affected = []
+        for v in views:
+            used = sum(i.used for i in v.ingredients if i.supply.id == a["supply_id"])
+            if not used or not v.net_price:
+                continue
+            before = v.cost - used * (a["new_price"] - a["old_price"])
+            affected.append({"dish": v.dish.name, "id": v.dish.id, "before": round(100 * (1 - before / v.net_price), 1),
+                             "after": v.margin_pct, "week": round(used * (a["new_price"] - a["old_price"]) * v.sold_week, 2),
+                             "below": v.below_target, "suggested": v.suggested_price})
+        if affected:
+            out.append({**a, "dishes": sorted(affected, key=lambda d: -abs(d["week"])),
+                        "week": round(sum(d["week"] for d in affected), 2)})
+    return sorted(out, key=lambda a: -abs(a["week"]))
 
 
 def _used(line: RecipeLine) -> float:

@@ -59,6 +59,12 @@ Each entry: what we assumed, why, and what would replace it in production.
     the seeded stock history is unchanged. After each live service a closing check bins stock past its use-by
     date and logs a little over-prepared food (2–5% of one or two items' use). Production: the till's sales export
     and the kitchen's own waste log.
+10n. **Each course has a target gross margin** (starters 72%, mains 70%, desserts 80%, drinks 85%), so drinks and
+    desserts carry more margin than mains, as on real menus. A dish below its target gets the lowest menu price
+    that reaches it, rounded up to €0.50. Only the approver named in the mandate (the owner) can change a menu
+    price; each change is in the audit log. A dish's cost uses the best price evidence available: Valio Aimo's
+    signed price for the product in use, then the last confirmed order, then the recorded price history
+    (simulated before the first real offer, see app/prices.py), then the list price.
 10m. **Waste is costed at the item's current price** (Valio Aimo's confirmed price once the agent has bought it,
     else the list price) and leaves stock at once. Food cost is shown from recipes, and with logged waste added;
     the gap nobody logged (recipes against stock counts) is not calculated yet.

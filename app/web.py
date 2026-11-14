@@ -132,6 +132,7 @@ EVENT_LABELS = {
     "offer.changed": "Valio Aimo's offer changed",
     "order.placed": "Order placed",
     "mandate.amended": "Mandate changed and signed",
+    "menu.price_changed": "Menu price changed",
 }
 
 EXAMPLES = [
@@ -310,6 +311,8 @@ def event_summary(e: dict) -> str:
         return ", ".join(p.get("rules", [])) or p.get("error", "")
     if kind in ("lookup.failed", "clarification.requested"):
         return p.get("error") or p.get("question", "")
+    if kind == "menu.price_changed":
+        return f"{p.get('dish')}: {eur(p.get('old_price'))} to {eur(p.get('new_price'))}"
     if kind == "intent.parsed":
         return f"{qty(p.get('quantity'))} {p.get('unit')} by {p.get('deadline')}, read by {p.get('parser')}"
     return ""
@@ -625,17 +628,37 @@ def next_day(request: Request):
 
 
 @app.get("/menu", include_in_schema=False)
-def menu_page(request: Request):
+def menu_page(request: Request, saved: str = "", error: str = ""):
     me = current_person(request)
     with SessionLocal() as s:
         day = kitchen.today(s)
         views = menu.dishes(s, me.org_key, today=day)
+        impact = menu.price_impact(s, me.org_key, views) if views else []
     sold = sum(v.sold_week for v in views)
     cost = sum(v.cost * v.sold_week for v in views)
     net = sum(v.net_price * v.sold_week for v in views)
     groups = [(label, [v for v in views if v.dish.category == key]) for key, label in menu.CATEGORIES.items()]
+    below = sorted((v for v in views if v.below_target), key=lambda v: v.margin_pct - v.target)
+    notice = {"tone": "bad", "text": error} if error else {"tone": "ok", "text": saved} if saved else None
     return page(request, "menu.html", active="menu", groups=[g for g in groups if g[1]], views=views, sold=sold,
-                week_pct=round(100 * cost / net, 1) if net else None, target=menu.FOOD_COST_TARGET, vat=menu.VAT)
+                week_pct=round(100 * cost / net, 1) if net else None, target=menu.FOOD_COST_TARGET, vat=menu.VAT,
+                net_week=round(net, 2), margin_week=round(net - cost, 2), below=below, impact=impact, notice=notice,
+                can_price=is_manager(me), approver=agent.approver_name(MANDATES[me.org_key]))
+
+
+@app.post("/menu/dishes/{dish_id}/price", include_in_schema=False)
+def set_dish_price(request: Request, dish_id: int, price: str = Form(...)):
+    me = current_person(request)
+    if not is_manager(me):
+        raise HTTPException(403, f"only {agent.approver_name(MANDATES[me.org_key])} can change menu prices")
+    try:
+        with SessionLocal() as s:
+            dish, old = menu.set_menu_price(s, me.org_key, dish_id, price, me.id)
+    except ValueError as e:
+        message = str(e)[:1].upper() + str(e)[1:] + "."
+        return RedirectResponse(f"/menu?{urlencode({'error': message})}#dish-{dish_id}", status_code=303)
+    saved = f"{dish.name} now costs {eur(dish.price)} on the menu (was {eur(old)})."
+    return RedirectResponse(f"/menu?{urlencode({'saved': saved})}#dish-{dish_id}", status_code=303)
 
 
 @app.get("/costs", include_in_schema=False)

@@ -121,6 +121,8 @@ class Dish(Base):
     price: Mapped[float] = mapped_column(Float)                       # menu price, € with VAT
     weight: Mapped[float] = mapped_column(Float, default=1.0)         # how often it is chosen within its category
     extras: Mapped[float] = mapped_column(Float, default=0.0)         # € per portion: oil, seasoning, garnish (untracked)
+    target_margin_pct: Mapped[float] = mapped_column(Float, default=70.0)   # gross margin the kitchen aims for
+    updated_by: Mapped[str] = mapped_column(String(80), default="")  # who last changed the menu price
     active: Mapped[int] = mapped_column(Integer, default=1)
     position: Mapped[int] = mapped_column(Integer, default=0)
 

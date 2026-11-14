@@ -2,7 +2,7 @@
 import pytest
 from sqlalchemy import select
 
-from app import costs, kitchen
+from app import costs, kitchen, menu
 from app.db import Supply, Waste
 from tests.conftest import NOW
 
@@ -21,10 +21,10 @@ def supply(s, name):
 def test_logged_waste_leaves_stock_and_is_costed(db):
     with db.buyer_db() as s:
         cream = supply(s, "Cream")
-        before = cream.on_hand
+        before, price = cream.on_hand, menu.prices(s, [cream])[cream.id].per_unit
         w = costs.log_waste(s, "restaurant", cream.id, "2,5", "spoiled", "elina.makinen", "fridge too warm")
         assert supply(s, "Cream").on_hand == pytest.approx(before - 2.5)
-        assert w.cost == pytest.approx(2.5 * cream.unit_cost, abs=0.01)
+        assert w.cost == pytest.approx(2.5 * price, abs=0.01)                # at today's price, not the list price
 
 
 @pytest.mark.parametrize("quantity, reason, org, message", [
