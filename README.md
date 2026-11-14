@@ -8,7 +8,8 @@ How a food-service wholesaler can let outside purchasing agents order safely. Th
   person's signed approval, before it confirms with a signed confirmation. REST with OpenAPI docs, plus MCP.
 - **A buyer's purchasing agent and console** (`app/`): a hotel and a school kitchen. The agent reads a request,
   works with the gateway over HTTP only, plans the cheapest option that meets the requirements, and orders it
-  within its mandate, asks the named approver, or refuses. The console shows every message between the two
+  within its mandate or asks the named approver; when no approval could help (nothing in time, a hard limit) it
+  says why it couldn't order and what to do instead. The console shows every message between the two
   sides as it happens.
 
 **The LLM interprets, code enforces.** The LLM only reads the request. Every permission decision comes from a

@@ -136,7 +136,7 @@ def describe(step: Step, names: dict[str, str] | None = None) -> dict:
             view["answer_detail"] = f"{_eur(res['total_net'])} before VAT · delivery {_day(res['delivery_date'])} · " \
                                     "signed by Valio Aimo"
         else:
-            view["answer"] = f"Refused: {error}"
+            view["answer"] = f"Not accepted: {error}"
     elif path.startswith("/v1/orders/"):
         view["ask"] = "Check the order's status"
         view["answer"] = (res or {}).get("status", "?").capitalize() if ok else f"Not found: {error}"

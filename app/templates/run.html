@@ -44,8 +44,14 @@
     <p class="verdict-title">Not ordered: Valio Aimo's offer changed</p>
     <p>{{ last_line }}</p>
   {% elif run.status == "REFUSED" %}
-    <p class="verdict-title">Not ordered</p>
-    <p>{% if "Valio Aimo refused" in last_line %}{{ last_line }}{% else %}The mandate does not allow this, and an approver cannot override it.{% endif %}</p>
+    {% set by_valio = "Valio Aimo didn't accept" in last_line or "Valio Aimo refused" in last_line %}
+    <p class="verdict-title">Couldn't order: here's why</p>
+    {% if by_valio %}
+    <p>The agent sent the order, but Valio Aimo checked it and didn't accept it: {{ last_line.split(": ", 1)[1] if ": " in last_line else last_line }}. Nothing was ordered.</p>
+    <p class="small gap-top-s"><strong>What you can do:</strong> {{ GATEWAY_NEXT_STEP }}</p>
+    {% else %}
+    <p>The agent stopped before ordering{% if approval %}, even though {{ approval.approver_name or approval.approver }} approved it{% endif %}: this is something no approval can make possible. Nothing was ordered.</p>
+    {% endif %}
   {% elif run.status == "FAILED" %}
     <p class="verdict-title">Could not finish</p>
     <p>{{ last_line }} Nothing was ordered.</p>
@@ -60,9 +66,13 @@
     </form>
   {% endif %}
 
-  {% if fired and run.status in ("NEEDS_HUMAN", "REFUSED") %}
+  {% if fired and run.status == "NEEDS_HUMAN" %}
   <ul class="reasons">
     {% for f in fired %}<li><span class="dot {{ f.tone }}"></span>{{ f.message }}</li>{% endfor %}
+  </ul>
+  {% elif fired and run.status == "REFUSED" and not by_valio %}
+  <ul class="reasons">
+    {% for f in fired if f.next %}<li><span class="dot bad"></span>{{ f.message }}<span class="sub"><strong>What you can do:</strong> {{ f.next }}</span></li>{% endfor %}
   </ul>
   {% endif %}
   {% if approval and approval.note %}<p class="small gap-top-s">{{ approval.approver_name or approval.approver }}'s note: {{ approval.note }}</p>{% endif %}

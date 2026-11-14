@@ -5,7 +5,7 @@
   "description": "What a buyer organisation authorises its purchasing agent to do: spend limits, tolerance bands, hard constraints and substitution rules. Signed by the organisation (Ed25519 over the canonical JSON without `signature` and `signer_key_id`). Valio Aimo's gateway verifies it against the organisation's registered key and enforces its hard limits.",
   "$defs": {
     "Bands": {
-      "description": "Green up to *_auto, amber up to *_max, red beyond.",
+      "description": "The agent decides alone up to *_auto; beyond that it asks the approver. *_max only flags the request as unusual.",
       "properties": {
         "price_premium_auto_pct": {
           "default": 5.0,

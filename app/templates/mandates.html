@@ -36,53 +36,62 @@
 
   <div class="table-scroll">
   <table class="bands">
-    <thead><tr><th></th><th class="zone ok">Agent decides</th><th class="zone warn">A person approves</th><th class="zone bad">Refused</th></tr></thead>
+    <thead><tr><th></th><th class="zone ok">The agent orders alone</th><th class="zone warn">The agent asks {{ m.approver_name or "a person" }} first</th></tr></thead>
     <tbody>
       <tr><td>Order value</td>
         <td class="zone ok">Up to {{ m.limits.per_order_auto_eur|eur }}</td>
-        <td class="zone warn">Up to {{ m.limits.per_order_max_eur|eur }}</td>
-        <td class="zone bad">Above {{ m.limits.per_order_max_eur|eur }}</td></tr>
+        <td class="zone warn">Up to {{ m.limits.per_order_max_eur|eur }}</td></tr>
       <tr><td>Spend per week</td>
         <td class="zone ok">Up to {{ m.limits.per_week_auto_eur|eur }}</td>
-        <td class="zone warn">Above {{ m.limits.per_week_auto_eur|eur }}</td>
-        <td class="zone bad">–</td></tr>
+        <td class="zone warn">Above {{ m.limits.per_week_auto_eur|eur }}</td></tr>
       <tr><td>Price above the cheapest option</td>
         <td class="zone ok">Up to {{ b.price_premium_auto_pct|qty }}%</td>
-        <td class="zone warn">Up to {{ b.price_premium_max_pct|qty }}%</td>
-        <td class="zone bad">Above {{ b.price_premium_max_pct|qty }}%</td></tr>
+        <td class="zone warn">More (flagged as unusual above {{ b.price_premium_max_pct|qty }}%)</td></tr>
       <tr><td>Ordering more than asked</td>
         <td class="zone ok">Up to {{ b.overage_auto_pct|qty }}%</td>
-        <td class="zone warn">Up to {{ b.overage_max_pct|qty }}%</td>
-        <td class="zone bad">Above {{ b.overage_max_pct|qty }}%</td></tr>
+        <td class="zone warn">More (flagged as unusual above {{ b.overage_max_pct|qty }}%)</td></tr>
       <tr><td>Covering less than asked</td>
         <td class="zone ok">Never</td>
-        <td class="zone warn">Short by up to {{ b.shortfall_max_pct|qty }}%</td>
-        <td class="zone bad">Short by more</td></tr>
+        <td class="zone warn">Always asks</td></tr>
       <tr><td>Delivery</td>
         <td class="zone ok">By the deadline</td>
-        <td class="zone warn">{{ "Up to " ~ b.late_days_max ~ " day(s) late" if b.late_days_max else "–" }}</td>
-        <td class="zone bad">{{ "Later than that" if b.late_days_max else "Any later" }}</td></tr>
+        <td class="zone warn">Later than the deadline</td></tr>
       <tr><td>Delivery reliability</td>
         <td class="zone ok">{{ (b.min_reliability_auto * 100)|round|int }}% or better</td>
-        <td class="zone warn">Lower</td>
-        <td class="zone bad">–</td></tr>
+        <td class="zone warn">Lower</td></tr>
       <tr><td>Amount compared with usual use</td>
         <td class="zone ok">Up to {{ b.unusual_qty_weeks|qty }} weeks' worth</td>
-        <td class="zone warn">More</td>
-        <td class="zone bad">–</td></tr>
+        <td class="zone warn">More</td></tr>
       <tr><td>Splitting an order</td>
         <td class="zone ok">{{ "Allowed" if m.substitution.allow_split_orders else "–" }}</td>
-        <td class="zone warn">{{ "–" if m.substitution.allow_split_orders else "Always asks" }}</td>
-        <td class="zone bad">–</td></tr>
-      <tr><td>Allergens</td>
-        <td class="zone ok">–</td><td class="zone warn">–</td>
-        <td class="zone bad">{% if h.excluded_allergens %}{% for a in h.excluded_allergens %}{{ ALLERGEN_NAMES.get(a, a)|capitalize }}{{ ", " if not loop.last }}{% endfor %}{{ ", including traces" if h.exclude_may_contain }}{{ "; products without allergen data" if h.require_allergen_data }}{% else %}Whatever the request excludes{% endif %}</td></tr>
+        <td class="zone warn">{{ "–" if m.substitution.allow_split_orders else "Always asks" }}</td></tr>
       <tr><td>Unsure about the request</td>
         <td class="zone ok">{{ (b.min_intent_confidence * 100)|round|int }}% sure or more</td>
-        <td class="zone warn">Less sure</td>
-        <td class="zone bad">–</td></tr>
+        <td class="zone warn">Less sure</td></tr>
     </tbody>
   </table>
+  </div>
+
+  <div class="never">
+    <p class="never-title">Never ordered, even with approval</p>
+    <p class="small muted">Valio Aimo checks these itself, so no approval can lift them. The agent doesn't ask: it tells you why it couldn't order and what you can do instead.</p>
+    <ul>
+      <li>Orders above {{ m.limits.per_order_max_eur|eur }}</li>
+      {% if h.excluded_allergens %}<li>Products containing {% for a in h.excluded_allergens %}{{ ALLERGEN_NAMES.get(a, a) }}{{ ", " if not loop.last }}{% endfor %}{{ ", including traces" if h.exclude_may_contain }}</li>{% endif %}
+      {% if h.require_allergen_data %}<li>Products without allergen data</li>{% endif %}
+      {% if h.required_claims %}<li>Products that are not {% for c in h.required_claims %}{{ c|claim|lower }}{{ ", " if not loop.last }}{% endfor %}</li>{% endif %}
+      {% if m.allowed_categories is not none %}<li>Products outside the categories these rules cover</li>{% endif %}
+      <li>Anything under rules that have run out ({{ m.valid_until }}) or been replaced by a newer version</li>
+    </ul>
+    <p class="small muted">The agent also tells you rather than asks when nothing suitable can arrive in time or Valio Aimo's order cut-off has passed: no approval could change that.</p>
+    <details>
+      <summary class="small">Rule IDs</summary>
+      <p class="small mono muted">Asks first: spend.per_order (above the agent's own limit), spend.per_week, spend.intent_budget,
+        band.price_premium, preference.cost, band.overage, band.shortfall, band.delivery, substitution.*, uncertainty.*,
+        quantity.unusual, request.review_required.<br>
+        Couldn't order: mandate.signature, mandate.validity, plan.empty, hard.required_claims, hard.allergens,
+        hard.allergen_data, category.allowed, spend.per_order (above the maximum), order.cutoff.</p>
+    </details>
   </div>
 
   <dl class="keys">

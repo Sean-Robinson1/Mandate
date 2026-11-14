@@ -123,6 +123,10 @@ Each entry: what we assumed, why, and what would replace it in production.
 18. **Valio Aimo enforces the mandate's hard limits; the buyer enforces everything.** The gateway checks the
     signatures, validity, allergens, claims, categories, the absolute order cap and the agent's spend authority.
     Softer judgement (price bands, preferences, confidence in the request) stays with the buyer's policy engine.
+18a. **The agent asks rather than refuses whenever a person could allow it** (owner's call, 14 Nov). Price,
+    over-ordering, shortfall and late delivery beyond the mandate's `*_max` bands now go to the approver, flagged
+    as unusual. The agent only stops without asking when no approval could help: the hard limits in 18, an
+    invalid or expired mandate, nothing suitable in time, or a passed cut-off; it then says why and what to do.
 19. **The audit log is tamper-evident inside the database, not tamper-proof.** Edits, gaps and deletions from
     the end are detected, but someone who can rewrite every row and the head record can forge a consistent
     log. Production: publish the head hash periodically somewhere the database administrator cannot change.

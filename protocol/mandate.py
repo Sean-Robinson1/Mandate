@@ -18,14 +18,14 @@ class SpendLimits(BaseModel):
 
 
 class Bands(BaseModel):
-    """Green up to *_auto, amber up to *_max, red beyond."""
+    """The agent decides alone up to *_auto; beyond that it asks the approver. *_max only flags the request as unusual."""
 
     price_premium_auto_pct: float = 5.0           # plan avg price vs reference_price
     price_premium_max_pct: float = 20.0
     overage_auto_pct: float = 3.0                 # covered above requested (pack rounding)
     overage_max_pct: float = 15.0
-    shortfall_max_pct: float = 50.0               # any shortfall needs a human; beyond this it is refused
-    late_days_max: int = 0                        # days after deadline a human may still approve
+    shortfall_max_pct: float = 50.0               # any shortfall needs a human; beyond this it is flagged as unusual
+    late_days_max: int = 0                        # any late delivery needs a human; beyond this it is flagged
     min_intent_confidence: float = 0.8            # below: ask the human
     min_reliability_auto: float = 0.9             # known reliability below this needs a human
     unusual_qty_weeks: float = 3.0                # more than this many weeks of the kitchen's usual use needs a human

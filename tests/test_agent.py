@@ -178,6 +178,7 @@ def test_hard_rule_at_sign_off_refuses_even_when_approved(world):
     r = order(world, 3000)
     row = decide(world, r.trace_id, now=CLOSING + timedelta(minutes=1))
     assert row.status == "REFUSED" and supplier_orders(world) == 0
+    assert "order.cutoff" in row.policy_json and "order.cutoff" in agent.NEXT_STEPS   # the page can say why and what next
 
 
 def test_expired_offer_is_renewed_when_nothing_changed(world):

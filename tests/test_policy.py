@@ -137,7 +137,7 @@ def test_empty_plan_rejects():
     result = run(plan=make_plan([]))
     assert result.decision == REJECT
     assert outcomes(result)["plan.empty"] == REJECT
-    assert "nothing orderable meets the constraints" in result.reasons[0].message
+    assert "can be delivered by the deadline" in result.reasons[0].message
 
 
 # ---------------------------------------------------------------- hard constraints
@@ -289,12 +289,14 @@ def test_intent_budget_cannot_raise_mandate_limit():
     (105.0, None),     # exactly 5 %
     (105.1, HUMAN),
     (120.0, HUMAN),    # exactly 20 %
-    (120.1, REJECT),
+    (120.1, HUMAN),    # beyond the upper band: still a person's call, flagged as unusual
 ])
 def test_price_premium_boundaries(total, expected):
     plan = make_plan([make_line(line_total=total)], reference_price=1.0)
     result = run(plan=plan)
     assert outcomes(result).get("band.price_premium") == expected
+    if total > 120:
+        assert "far outside the usual" in result.reasons[0].message
 
 
 @pytest.mark.parametrize("overrides", [{"reference_price": None}, {"covered_quantity": 0.0}])
@@ -308,7 +310,7 @@ def test_price_premium_skipped_without_reference_or_coverage(overrides):
     (103.0, None),     # exactly 3 %
     (103.5, HUMAN),
     (115.0, HUMAN),    # exactly 15 %
-    (115.5, REJECT),
+    (115.5, HUMAN),    # beyond the upper band: asks, never refuses
 ])
 def test_overage_boundaries(covered, expected):
     result = run(plan=make_plan([make_line(measure=covered)]))
@@ -320,7 +322,7 @@ def test_overage_boundaries(covered, expected):
     (100.0, None),
     (99.0, HUMAN),     # any shortfall needs a human
     (50.0, HUMAN),     # exactly 50 %
-    (49.0, REJECT),
+    (49.0, HUMAN),     # more than 50 % short: a person decides whether part is worth having
 ])
 def test_shortfall_boundaries(covered, expected):
     line = make_line(measure=covered, line_total=covered)
@@ -338,10 +340,10 @@ def test_shortfall_derived_when_plan_field_understates_it():
 @pytest.mark.parametrize("late_days_max, days_late, expected", [
     (0, -2, None),
     (0, 0, None),
-    (0, 1, REJECT),
+    (0, 1, HUMAN),
     (2, 1, HUMAN),
     (2, 2, HUMAN),
-    (2, 3, REJECT),
+    (2, 3, HUMAN),     # later than the rules usually accept: still a person's call
 ])
 def test_delivery_boundaries(late_days_max, days_late, expected):
     intent = make_intent()
@@ -358,7 +360,7 @@ def test_delivery_uses_the_latest_line():
                   delivery_date=date(2026, 11, 21)),
     ]
     result = run(plan=make_plan(lines))
-    assert outcomes(result) == {"band.delivery": REJECT}
+    assert outcomes(result) == {"band.delivery": HUMAN}
     assert result.reasons[0].details["late_days"] == 1
 
 

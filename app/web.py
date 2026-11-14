@@ -82,7 +82,7 @@ STATUS = {
     "NEEDS_HUMAN": ("Waiting for approval", "warn"),
     "QUEUED": ("Queued: resending to Valio Aimo", "warn"),
     "NEEDS_CLARIFICATION": ("Needs more detail", "warn"),
-    "REFUSED": ("Not ordered", "bad"),
+    "REFUSED": ("Couldn't order", "bad"),
     "DECLINED": ("Declined", "bad"),
     "EXPIRED": ("Offer changed", "bad"),
     "FAILED": ("Could not finish", "bad"),
@@ -128,7 +128,7 @@ EVENT_LABELS = {
     "approval.reopened": "Sent back for review",
     "order.reserved": "Order reserved against the weekly limit",
     "order.confirmed": "Order confirmed by Valio Aimo (signed)",
-    "order.refused": "Order refused",
+    "order.refused": "Couldn't order",
     "order.failed": "Order could not be placed",
     "offer.changed": "Valio Aimo's offer changed",
     "order.placed": "Order placed",
@@ -196,7 +196,7 @@ def day_on(day_number: int) -> date:
 
 
 templates.env.globals.update(STATUS=STATUS, ALLERGEN_NAMES=ALLERGEN_NAMES, PEOPLE=PEOPLE, reader=agent.reader_name,
-                             has_menu=menu.has_menu, day_on=day_on)
+                             has_menu=menu.has_menu, day_on=day_on, GATEWAY_NEXT_STEP=agent.GATEWAY_NEXT_STEP)
 
 
 # ---------------------------------------------------------------- who is using the console
@@ -273,8 +273,9 @@ def checks_for(policy_data: dict) -> tuple[list[dict], list[dict]]:
         label = RULE_LABELS.get(rule, rule)
         if rule in reasons:
             r = reasons[rule]
-            fired.append({"rule": rule, "label": label, "message": r["message"],
-                          "tone": "bad" if r["outcome"] == "REJECT" else "warn"})
+            hard = r["outcome"] == "REJECT"
+            fired.append({"rule": rule, "label": label, "message": r["message"], "tone": "bad" if hard else "warn",
+                          "next": agent.NEXT_STEPS.get(rule, "") if hard else ""})
         elif f"{rule}:warning" in passed:
             ok.append({"rule": rule, "label": "Supplier-delivered: exact stock not confirmed", "note": True})
         elif rule in passed:
@@ -296,7 +297,7 @@ def event_summary(e: dict) -> str:
     if kind == "plan.chosen":
         return f"{len(p.get('lines', []))} line(s), {eur(p.get('total_net'))} before VAT"
     if kind == "policy.evaluated":
-        word = {"AUTO_APPROVE": "Within authority", "NEEDS_HUMAN": "Needs a person", "REJECT": "Not allowed"}
+        word = {"AUTO_APPROVE": "Within authority", "NEEDS_HUMAN": "Needs a person", "REJECT": "Can't be ordered"}
         return f"{word.get(p.get('decision'), p.get('decision'))}; {len(p.get('passed', []))} rules passed, " \
                f"{len(p.get('reasons', []))} triggered"
     if kind == "approval.requested":

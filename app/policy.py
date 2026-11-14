@@ -3,6 +3,11 @@
 Pure function of (intent, plan, mandate, ctx). No I/O, no clock reads, no LLM,
 no network. Time comes in through ``ctx.now``.
 
+Two outcomes stop the agent ordering alone. NEEDS_HUMAN: a person may allow it, so the agent asks the approver
+and explains why. REJECT: no approval can make the order possible (nothing suitable in time, the cut-off has
+passed, an invalid or expired mandate, or a hard limit Valio Aimo's gateway also enforces: allergens, claims,
+categories, the per-order maximum), so the agent tells the person why and what they can do instead.
+
 CRITICAL INVARIANT: every limit, band and hard constraint is read from the
 Mandate and nowhere else. Nothing in the plan, the intent text or any product
 text can raise a limit or relax a constraint. The intent may only make the
@@ -103,7 +108,7 @@ def plan_empty(intent, plan, mandate, ctx):
         return None
     return _reason(
         "plan.empty", REJECT,
-        "The plan has no order lines: nothing orderable meets the constraints.",
+        "Nothing Valio Aimo offers meets the requirements and can be delivered by the deadline.",
     )
 
 
@@ -247,12 +252,10 @@ def band_price_premium(intent, plan, mandate, ctx):
     details = dict(avg_price=round(avg, 6), reference_price=plan.reference_price,
                    premium_pct=premium, auto_pct=bands.price_premium_auto_pct,
                    max_pct=bands.price_premium_max_pct)
-    if premium > bands.price_premium_max_pct:
-        return _reason("band.price_premium", REJECT,
-                       f"{base}; the maximum allowed premium is {bands.price_premium_max_pct:g}%.",
-                       **details)
+    far = (f" That is also beyond the {bands.price_premium_max_pct:g}% the rules call far outside the usual, "
+           "so check it carefully." if premium > bands.price_premium_max_pct else "")
     return _reason("band.price_premium", NEEDS_HUMAN,
-                   f"{base}; the agent may accept up to {bands.price_premium_auto_pct:g}% alone.",
+                   f"{base}; the agent may accept up to {bands.price_premium_auto_pct:g}% alone.{far}",
                    **details)
 
 
@@ -294,11 +297,10 @@ def band_overage(intent, plan, mandate, ctx):
             f"({overage:.1f}% over)")
     details = dict(requested_quantity=requested, covered_quantity=covered, overage_pct=overage,
                    auto_pct=bands.overage_auto_pct, max_pct=bands.overage_max_pct)
-    if overage > bands.overage_max_pct:
-        return _reason("band.overage", REJECT,
-                       f"{base}; the maximum allowed overage is {bands.overage_max_pct:g}%.", **details)
+    far = (f" That is also beyond the {bands.overage_max_pct:g}% the rules call far outside the usual, "
+           "so check it carefully." if overage > bands.overage_max_pct else "")
     return _reason("band.overage", NEEDS_HUMAN,
-                   f"{base}; the agent may accept up to {bands.overage_auto_pct:g}% alone.", **details)
+                   f"{base}; the agent may accept up to {bands.overage_auto_pct:g}% alone.{far}", **details)
 
 
 def band_shortfall(intent, plan, mandate, ctx):
@@ -314,11 +316,10 @@ def band_shortfall(intent, plan, mandate, ctx):
             f"({shortfall_pct:.1f}% short)")
     details = dict(requested_quantity=requested, covered_quantity=plan.covered_quantity,
                    shortfall=shortfall, shortfall_pct=shortfall_pct, max_pct=max_pct)
-    if shortfall_pct > max_pct:
-        return _reason("band.shortfall", REJECT,
-                       f"{base}; more than {max_pct:g}% short is refused.", **details)
+    far = (f" That is more than {max_pct:g}% short, so check whether part of the order is still worth having."
+           if shortfall_pct > max_pct else "")
     return _reason("band.shortfall", NEEDS_HUMAN,
-                   f"{base}; any shortfall needs a person to decide.", **details)
+                   f"{base}; any shortfall needs a person to decide.{far}", **details)
 
 
 def band_delivery(intent, plan, mandate, ctx):
@@ -335,11 +336,10 @@ def band_delivery(intent, plan, mandate, ctx):
     base = f"Latest delivery is {latest}, {late_days} day(s) after the deadline of {intent.deadline}"
     details = dict(latest_delivery=latest.isoformat(), deadline=intent.deadline.isoformat(),
                    late_days=late_days, late_days_max=max_days)
-    if late_days > max_days:
-        return _reason("band.delivery", REJECT,
-                       f"{base}; at most {max_days} day(s) late may be approved.", **details)
+    far = (f" That is later than the {max_days} day(s) the rules usually accept, so check the kitchen can wait."
+           if late_days > max_days else "")
     return _reason("band.delivery", NEEDS_HUMAN,
-                   f"{base}; late delivery needs a person to decide.", **details)
+                   f"{base}; late delivery needs a person to decide.{far}", **details)
 
 
 def order_cutoff(intent, plan, mandate, ctx):

@@ -167,13 +167,35 @@ def describe_plan(plan: Plan) -> tuple[str, str]:
             f"delivery {plan.latest_delivery:%a %d %b}")
 
 
+# What a person can do when no approval could make the order possible (Decision.REJECT), per rule.
+NEXT_STEPS = {
+    "mandate.signature": "The purchasing manager needs to sign the purchasing rules again; until then the agent "
+                         "cannot order anything.",
+    "mandate.validity": "The purchasing manager can sign a new version of the purchasing rules, then try again.",
+    "plan.empty": "Try a later delivery day or a different product. The products the agent looked at, and why each "
+                  "one did not fit, are listed below.",
+    "hard.required_claims": "This is a safety rule Valio Aimo also checks, so no approval can lift it. Change the "
+                            "request to a product that meets it.",
+    "hard.allergens": "This is a safety rule Valio Aimo also checks, so no approval can lift it. Change the request "
+                      "to a product without the allergen.",
+    "hard.allergen_data": "Valio Aimo has no allergen data for it, and the rules treat that as unsafe. Choose another "
+                          "product.",
+    "category.allowed": "The purchasing rules do not cover this kind of product. Order it another way, or the "
+                        "purchasing manager can change the rules.",
+    "spend.per_order": "Order a smaller amount, or the purchasing manager can raise the per-order maximum in the "
+                       "purchasing rules.",
+    "order.cutoff": "Try again: the agent will look for the next delivery Valio Aimo can still make.",
+}
+GATEWAY_NEXT_STEP = "Try again for a fresh offer. If Valio Aimo keeps turning it down, contact Valio Aimo."
+
+
 def describe_policy(result: PolicyResult, mandate: Mandate) -> tuple[str, str, str]:
     if result.decision is Decision.AUTO_APPROVE:
         return "Within the mandate", f"All {len(result.passed)} checks passed, so the agent may order alone", "ok"
     if result.decision is Decision.NEEDS_HUMAN:
         return (f"Needs {approver_name(mandate)}'s approval", " ".join(r.message for r in result.reasons), "warn")
     hard = [r for r in result.reasons if r.outcome is Decision.REJECT]
-    return "Not allowed by the mandate", " ".join(r.message for r in hard), "bad"
+    return "Couldn't order this, even with approval", " ".join(r.message for r in hard), "bad"
 
 
 def write_receipt(intent: IntentSpec, plan: Plan, result: PolicyResult, mandate: Mandate,
@@ -206,7 +228,7 @@ def write_receipt(intent: IntentSpec, plan: Plan, result: PolicyResult, mandate:
     elif result.decision is Decision.NEEDS_HUMAN:
         out.append(f"No order placed. Waiting for sign-off by {approver_name(mandate)}.")
     else:
-        out.append("No order placed. This cannot be approved; the rule above is a hard limit.")
+        out.append("No order placed. No approval could make this order possible; see the reason above.")
     return "\n".join(out)
 
 
@@ -283,8 +305,8 @@ def _refused(session: Session, steps: StepLog, row: Run, order: Order, e: OrderR
     failed = [c for c in e.refusal.checks if not c.ok]
     append_event(session, trace_id=row.trace_id, actor="valio-aimo", event_type="order.refused",
                  payload={"error": e.refusal.error, "failed_checks": [c.model_dump() for c in failed]})
-    steps.agent("Valio Aimo refused the order", e.refusal.error, "bad")
-    row.receipt += f"\nValio Aimo refused the order: {e.refusal.error}"
+    steps.agent("Valio Aimo didn't accept the order", e.refusal.error, "bad")
+    row.receipt += f"\nValio Aimo didn't accept the order: {e.refusal.error}"
     session.commit()
     return "REFUSED"
 
@@ -515,7 +537,7 @@ def decide(session: Session, trace_id: str, mandate: Mandate, approve: bool, gat
     """A person signs off or declines a pending request.
 
     The policy is re-evaluated at sign-off, because time has passed and other orders may have been placed:
-      - a hard rule now failing (e.g. the order cut-off passed) refuses the order; approval cannot override it;
+      - a hard rule now failing (e.g. the order cut-off passed) stops the order; approval cannot override it;
       - a reason the approver was not shown (e.g. the weekly limit is now exceeded) sends the request back
         for review instead of ordering, and nothing is signed.
     If Valio Aimo's offer expired meanwhile, a new one is requested; changed prices or stock also send it back.
@@ -583,10 +605,11 @@ def decide(session: Session, trace_id: str, mandate: Mandate, approve: bool, gat
         steps.person(f"Approved by {who}", (note + " · " if note else "") + f"Signed with {who}'s key", "ok")
         if hard:
             row.status = "REFUSED"
-            row.receipt += "\nApproved, but refused at sign-off: " + "; ".join(r.message for r in hard)
+            row.policy_json = recheck.model_dump_json()         # so the page can say why and what to do next
+            row.receipt += "\nApproved, but it could no longer be ordered: " + "; ".join(r.message for r in hard)
             append_event(session, trace_id=trace_id, actor="policy-engine", event_type="order.refused",
                          payload={"rules": [r.rule for r in hard], "at": "sign-off"})
-            steps.agent("Refused at sign-off", " ".join(r.message for r in hard), "bad")
+            steps.agent("Couldn't order after approval", " ".join(r.message for r in hard), "bad")
             session.commit()
             return row
         order = _reserve(session, trace_id, mandate, plan, now)
