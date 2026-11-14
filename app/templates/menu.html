@@ -77,65 +77,19 @@
   </div>
 </div>
 
-<section aria-labelledby="alerts-h">
-  <div class="section-head"><h2 id="alerts-h">Price changes</h2><span class="muted">Ingredient prices that moved 3% or more in the last 14 days</span></div>
-  {% if data.alerts %}
-  <div class="alerts">
-  {% for a in data.alerts %}
-    <article class="card alert {{ 'rising' if a.rising else 'falling' }}">
-      <div class="card-head wrap">
-        <div>
-          <h3 class="alert-title">{{ a.supply }}</h3>
-          <div class="small muted">{{ a.old_price|eur }} → <strong class="{{ 'bad-text' if a.rising else 'ok-text' }}">{{ a.new_price|eur }}</strong> per {{ a.unit|unit }}
-            · changed {{ ago(a.since_day) }}</div>
-        </div>
-        <span class="chip {{ 'bad' if a.rising else 'ok' }}">{{ "+" if a.change_pct > 0 }}{{ a.change_pct|round(1) }}%</span>
-      </div>
-      <p class="alert-effect">{% if a.rising %}Costs you <strong>{{ a.weekly_cost_change|abs|eur }}</strong> more a week at this week's sales.
-        {% else %}Saves you <strong>{{ a.weekly_cost_change|abs|eur }}</strong> a week at this week's sales.{% endif %}</p>
-      {% if a.dishes %}
-      <div class="table-scroll"><table class="alert-dishes">
-        <thead><tr><th>Dish</th><th class="num">Margin</th><th class="num">Per week</th><th class="num">Suggested price</th>{% if a.rising %}<th><span class="sr-only">Action</span></th>{% endif %}</tr></thead>
-        <tbody>{% for d in a.dishes %}
-          <tr>
-            <td><a class="item-link" href="#dish-{{ d.id }}">{{ d.name }}</a></td>
-            <td class="num">{{ d.margin_pct_before|round(1) }}% → <span class="{{ 'bad-text' if d.margin_pct_after < d.margin_pct_before }}">{{ d.margin_pct_after|round(1) }}%</span></td>
-            <td class="num {{ 'bad-text' if d.loss_week > 0 }}">{% if d.loss_week > 0 %}−{{ d.loss_week|eur }}{% else %}+{{ d.loss_week|abs|eur }}{% endif %}</td>
-            <td class="num">{{ d.suggested_price|eur if d.suggested_price else "–" }}</td>
-            {% if a.rising %}<td class="num">{% if d.suggested_price %}
-              {% if manager %}
-              <form method="post" action="/menu/dishes/{{ d.id }}/price">
-                <input type="hidden" name="price" value="{{ '%.2f'|format(d.suggested_price) }}">
-                <button class="btn secondary small-btn">Set price to {{ d.suggested_price|eur }}</button>
-              </form>
-              {% else %}<span class="small muted">{{ approver }} sets prices</span>{% endif %}
-            {% endif %}</td>{% endif %}
-          </tr>
-        {% endfor %}</tbody>
-      </table></div>
-      {% else %}
-      <p class="small muted">No dish on the menu uses it.</p>
-      {% endif %}
-    </article>
-  {% endfor %}
-  </div>
-  {% else %}
-  <p class="empty">No ingredient price has moved by 3% or more in the last 14 days.</p>
-  {% endif %}
-</section>
-
-<section aria-labelledby="dishes-h">
-  <div class="section-head"><h2 id="dishes-h">Dish margins</h2><span class="muted">Most profitable first · prices include VAT, margins are before VAT</span></div>
+<div class="menu-layout">
+<section class="menu-main" aria-labelledby="dishes-h">
+  <div class="section-head"><h2 id="dishes-h">Dish margins</h2><span class="muted">Most profitable first</span></div>
   {% if data.dishes %}
   <div class="table-scroll">
-  <table class="dish-table">
+  <table class="dish-table" id="dish-table">
     <thead><tr>
-      <th>Dish</th><th class="num">Menu price</th><th class="num">Plate cost</th>
-      <th class="margin-col">Margin <span class="sub-inline">against target</span></th>
+      <th>Dish</th><th class="num">Price</th><th class="num">Plate cost</th>
+      <th class="margin-col">Margin <span class="sub-inline">vs target</span></th>
       <th class="num">Sold</th><th class="num">Profit</th>
     </tr></thead>
     {% for d in data.dishes %}
-    <tbody id="dish-{{ d.id }}" class="dish {{ 'below' if d.below_target }}">
+    <tbody id="dish-{{ d.id }}" class="dish {{ 'below' if d.below_target }} {{ 'extra' if loop.index > 10 and not d.below_target }}">
       <tr>
         <td>
           <details class="dish-more">
@@ -181,76 +135,144 @@
     {% endfor %}
   </table>
   </div>
-  <p class="small muted sheet-note">Open a dish to see what one portion uses{% if manager %} and to change its price{% endif %}.</p>
+  {% set extra = data.dishes[10:]|rejectattr("below_target")|list|length %}
+  {% if extra %}<button type="button" class="btn secondary small-btn show-all" id="show-all" hidden aria-controls="dish-table">Show all {{ data.dishes|length }} dishes</button>{% endif %}
+  <p class="small muted sheet-note">Prices include VAT; margins are before VAT. Open a dish to see what one portion uses{% if manager %} and to change its price{% endif %}.</p>
   {% else %}
   <p class="empty">No dishes on the menu yet.</p>
   {% endif %}
 </section>
 
-<section aria-labelledby="insights-h">
-  <div class="section-head"><h2 id="insights-h">Ingredient insights</h2><span class="muted">Where the food cost goes, and where to save</span></div>
-  <div class="insights">
-    <div class="insight">
-      <h3 class="sub-head">Biggest spend this week</h3>
-      {% if data.top_spend %}
-      <div class="table-scroll"><table>
-        <thead><tr><th>Ingredient</th><th class="num">Spend</th><th class="share-col">Share of food cost</th><th class="num">Price, last 4 weeks</th></tr></thead>
-        <tbody>{% for t in data.top_spend %}
-          <tr>
-            <td><a class="item-link" href="/supplies/{{ t.supply_id }}">{{ t.supply }}</a><span class="sub">{{ t.unit_price|eur }}/{{ t.unit|unit }}</span></td>
-            <td class="num">{{ t.spend_week|eur0 }}</td>
-            <td class="share-col"><span class="share"><span class="share-bar"><i style="width:{{ [t.share_pct, 100]|min }}%"></i></span><span class="share-n">{{ t.share_pct|round(0)|int }}%</span></span></td>
-            <td class="num spark-cell">{{ trend_spark(t.trend, t.supply ~ " price over the last four weeks, now " ~ (t.unit_price|eur) ~ " per " ~ (t.unit|unit)) }}</td>
-          </tr>
-        {% endfor %}</tbody>
-      </table></div>
-      {% else %}<p class="empty">No sales this week, so no ingredient spend yet.</p>{% endif %}
-    </div>
+<aside class="menu-rail" aria-label="Needs attention">
+  <section class="rail-block" aria-labelledby="alerts-h">
+    <div class="rail-head"><h2 id="alerts-h">Price changes</h2><span class="muted small">Last 14 days</span></div>
+    {% if data.alerts %}
+    <ul class="watch-list">
+    {% for a in data.alerts %}{% set below = a.dishes|selectattr("suggested_price")|list if a.rising else [] %}
+      <li><details class="watch">
+        <summary>
+          <span class="watch-name">{{ a.supply }}</span>
+          <span class="chip {{ 'bad' if a.rising else 'ok' }}">{{ "+" if a.change_pct > 0 }}{{ a.change_pct|round(1) }}%</span>
+          <span class="watch-sub">{% if a.rising %}+{{ a.weekly_cost_change|abs|eur0 }} a week{% else %}−{{ a.weekly_cost_change|abs|eur0 }} a week{% endif %}
+            · {{ a.dishes|length }} dish{{ "es" if a.dishes|length != 1 }}{% if below %} · <span class="bad-text">{{ below|length }} below target</span>{% endif %}</span>
+        </summary>
+        <div class="watch-body">
+          <p><strong>{{ a.supply }}</strong> went from {{ a.old_price|eur }} to {{ a.new_price|eur }} per {{ a.unit|unit }} {{ ago(a.since_day) }}.</p>
+          <p>{% if a.rising %}At this week's sales, that adds <strong>{{ a.weekly_cost_change|abs|eur }}</strong> to your food cost every week.
+             {% else %}At this week's sales, that takes <strong>{{ a.weekly_cost_change|abs|eur }}</strong> off your food cost every week.{% endif %}</p>
+          {% if a.dishes %}
+          {% if a.rising %}<p class="watch-lead">{% if below %}{{ below|length }} dish{{ "es" if below|length != 1 }} now earn{{ "s" if below|length == 1 }} less than {{ "its" if below|length == 1 else "their" }} target margin:{% else %}Every dish that uses it still meets its target margin.{% endif %}</p>{% endif %}
+          {% if below %}
+          <ul class="fix-list">
+          {% for d in below %}
+            <li>
+              <div><a class="item-link" href="#dish-{{ d.id }}">{{ d.name }}</a>
+                <span class="sub">Margin {{ d.margin_pct_before|round(0)|int }}% → <span class="bad-text">{{ d.margin_pct_after|round(0)|int }}%</span>, {{ d.loss_week|eur }} less profit a week</span></div>
+              {% if manager %}
+              <form method="post" action="/menu/dishes/{{ d.id }}/price">
+                <input type="hidden" name="price" value="{{ '%.2f'|format(d.suggested_price) }}">
+                <button class="btn secondary small-btn" title="Restores the target margin">Charge {{ d.suggested_price|eur }}</button>
+              </form>
+              {% else %}<span class="small muted">{{ d.suggested_price|eur }} would fix it</span>{% endif %}
+            </li>
+          {% endfor %}
+          </ul>
+          {% endif %}
+          {% set others = a.dishes|rejectattr("id", "in", below|map(attribute="id")|list)|list %}
+          {% if others %}<p class="small muted">{{ "Also uses it, still on target" if a.rising else "Dishes that use it" }}: {{ others|map(attribute="name")|join(", ") }}.</p>{% endif %}
+          {% else %}<p class="small muted">No dish on the menu uses it.</p>{% endif %}
+          {% if below and not manager %}<p class="small muted">{{ approver }} changes menu prices.</p>{% endif %}
+        </div>
+      </details></li>
+    {% endfor %}
+    </ul>
+    {% else %}
+    <p class="empty">No ingredient price has moved by 3% or more in the last 14 days.</p>
+    {% endif %}
+  </section>
 
-    <div class="insight" id="cheaper">
-      <h3 class="sub-head">Cheaper equivalents</h3>
-      {% if data.cheaper %}
-      <ul class="save-list">
-      {% for c in data.cheaper %}
-        <li class="save">
-          <div class="save-main">
-            <strong>{{ c.supply }}</strong>
-            <span class="sub">Now {{ c.current_product }} at {{ c.current_price|eur }}/{{ c.unit|unit }}</span>
-            <span class="sub">Instead <a href="/products/{{ c.alt_product_id }}">{{ c.alt_product }}</a> at {{ c.alt_price|eur }}/{{ c.unit|unit }}
-              · you use about {{ c.use_week|qty }} {{ c.unit|unit }} a week</span>
-          </div>
-          <div class="save-act">
-            <span class="save-n">{{ c.saving_week|eur }}<span class="muted">/week</span></span>
-            {% if c.orderable %}
-            <form method="post" action="/menu/actions/switch">
-              <input type="hidden" name="supply_id" value="{{ c.supply_id }}">
-              <input type="hidden" name="alt_product_id" value="{{ c.alt_product_id }}">
-              <button class="btn small-btn">Order the cheaper one</button>
-            </form>
-            {% else %}<span class="small muted">Order from the supplier</span>{% endif %}
-          </div>
-        </li>
-      {% endfor %}
-      </ul>
-      <p class="small muted">The purchasing agent places these orders. Each goes through the
-        <a href="/rules">signed purchasing rules</a>, and to {{ approver }} for approval when the rules say so.</p>
-      {% else %}<p class="empty">No cheaper equivalent seen yet. Prices of alternatives are recorded each time the agent gets an offer.</p>{% endif %}
-    </div>
+  <section class="rail-block" id="cheaper" aria-labelledby="cheaper-h">
+    <div class="rail-head"><h2 id="cheaper-h">Cheaper equivalents</h2><span class="muted small">Per week</span></div>
+    {% if data.cheaper %}
+    <ul class="watch-list">
+    {% for c in data.cheaper %}{% set pct = ((1 - c.alt_price / c.current_price) * 100)|round(0)|int %}
+      <li><details class="watch">
+        <summary>
+          <span class="watch-name">{{ c.supply }}</span>
+          <span class="save-n">{{ c.saving_week|eur0 }}</span>
+          <span class="watch-sub">{{ pct }}% cheaper per {{ c.unit|unit }}</span>
+        </summary>
+        <div class="watch-body">
+          <dl class="swap">
+            <div><dt>You buy now</dt><dd>{{ c.current_product }}<span class="sub">{{ c.current_price|eur }} per {{ c.unit|unit }}</span></dd></div>
+            <div><dt>Equivalent</dt><dd><a href="/products/{{ c.alt_product_id }}">{{ c.alt_product }}</a><span class="sub">{{ c.alt_price|eur }} per {{ c.unit|unit }}, {{ pct }}% less</span></dd></div>
+          </dl>
+          <p>You use about {{ c.use_week|qty }} {{ c.unit|unit }} a week, so switching saves about <strong>{{ c.saving_week|eur }} a week</strong>.</p>
+          <p class="small muted">Check it suits your recipes: it is a similar product, not the same one.</p>
+          {% if c.orderable %}
+          <form method="post" action="/menu/actions/switch">
+            <input type="hidden" name="supply_id" value="{{ c.supply_id }}">
+            <input type="hidden" name="alt_product_id" value="{{ c.alt_product_id }}">
+            <button class="btn small-btn">Order the cheaper one</button>
+          </form>
+          <p class="small muted">The purchasing agent orders it under the <a href="/rules">signed purchasing rules</a>, and asks {{ approver }} first when the rules say so.</p>
+          {% else %}<p class="small muted">The agent can't order this one: order it from the supplier.</p>{% endif %}
+        </div>
+      </details></li>
+    {% endfor %}
+    </ul>
+    {% else %}<p class="empty">No cheaper equivalent seen yet. Prices of alternatives are recorded each time the agent gets an offer.</p>{% endif %}
+  </section>
+</aside>
+</div>
 
-    <div class="insight">
-      <h3 class="sub-head">Stock at risk of going to waste</h3>
-      {% if data.at_risk %}
-      <ul class="dlist risk-list">
-      {% for r in data.at_risk %}
-        <li>
-          <span class="d-date">Use by {{ within(r.use_by_day) }}</span>
-          <span><a class="item-link" href="/supplies/{{ r.supply_id }}">{{ r.supply }}</a>: {{ r.quantity|qty }} {{ r.unit|unit }}, worth {{ r.value|eur }}
-            <span class="sub">{% if r.dishes %}Use it up in {{ r.dishes|join(", ") }}{% else %}No dish on the menu uses it{% endif %}</span></span>
-        </li>
-      {% endfor %}
-      </ul>
-      {% else %}<p class="empty">Nothing is close to its use-by date.</p>{% endif %}
-    </div>
-  </div>
-</section>
+<div class="menu-lower">
+  <section aria-labelledby="spend-h">
+    <div class="section-head"><h2 id="spend-h">Where the food cost goes</h2><span class="muted">This week</span></div>
+    {% if data.top_spend %}
+    <div class="table-scroll"><table>
+      <thead><tr><th>Ingredient</th><th class="num">Spend</th><th class="share-col">Share</th><th class="num">Price, 4 weeks</th></tr></thead>
+      <tbody>{% for t in data.top_spend %}
+        <tr>
+          <td><a class="item-link" href="/supplies/{{ t.supply_id }}">{{ t.supply }}</a><span class="sub">{{ t.unit_price|eur }}/{{ t.unit|unit }}</span></td>
+          <td class="num">{{ t.spend_week|eur0 }}</td>
+          <td class="share-col"><span class="share"><span class="share-bar"><i style="width:{{ [t.share_pct, 100]|min }}%"></i></span><span class="share-n">{{ t.share_pct|round(0)|int }}%</span></span></td>
+          <td class="num spark-cell">{{ trend_spark(t.trend, t.supply ~ " price over the last four weeks, now " ~ (t.unit_price|eur) ~ " per " ~ (t.unit|unit)) }}</td>
+        </tr>
+      {% endfor %}</tbody>
+    </table></div>
+    {% else %}<p class="empty">No sales this week, so no ingredient spend yet.</p>{% endif %}
+  </section>
+
+  <section aria-labelledby="risk-h">
+    <div class="section-head"><h2 id="risk-h">Use it up</h2><span class="muted">Close to its use-by date</span></div>
+    {% if data.at_risk %}
+    <ul class="dlist risk-list">
+    {% for r in data.at_risk %}
+      <li>
+        <span class="d-date">{{ within(r.use_by_day)|capitalize }}</span>
+        <span><a class="item-link" href="/supplies/{{ r.supply_id }}">{{ r.supply }}</a>: {{ r.quantity|qty }} {{ r.unit|unit }}, worth {{ r.value|eur }}
+          <span class="sub">{% if r.dishes %}Goes into {{ r.dishes|join(", ") }}{% else %}No dish on the menu uses it{% endif %}</span></span>
+      </li>
+    {% endfor %}
+    </ul>
+    {% else %}<p class="empty">Nothing is close to its use-by date.</p>{% endif %}
+  </section>
+</div>
+{% endblock %}
+{% block script %}
+<script>
+  // Show the ten most profitable dishes and any below target; the rest one click away. Without script, all show.
+  const table = document.getElementById("dish-table"), more = document.getElementById("show-all");
+  if (table && more) {
+    table.classList.add("collapsed"); more.hidden = false;
+    more.addEventListener("click", () => {
+      const open = table.classList.toggle("collapsed") === false;
+      more.textContent = open ? "Show fewer dishes" : more.dataset.label;
+      more.setAttribute("aria-expanded", String(open));
+    });
+    more.dataset.label = more.textContent; more.setAttribute("aria-expanded", "false");
+    if (location.hash.startsWith("#dish-") && document.querySelector(location.hash + ".extra")) more.click();
+  }
+</script>
 {% endblock %}
