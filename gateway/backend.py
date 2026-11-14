@@ -63,7 +63,7 @@ class ValioClient:
         self.customer = customer
         self._http = httpx.Client(
             base_url=base_url or config.VALIO_API_BASE_URL,
-            headers={"X-API-Key": api_key or config.VALIO_API_KEY},
+            headers={"X-API-Key": api_key or config.VALIO_API_KEY, "User-Agent": "trusted-trade-gateway/0.4"},
             timeout=20.0,
         )
 
