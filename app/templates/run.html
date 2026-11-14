@@ -1,88 +1,88 @@
 {% extends "base.html" %}
 {% block title %}{{ run.request_text|truncate(40) }} · Trusted Trade{% endblock %}
 {% block content %}
-{% set label, tone = STATUS[run.status] %}
+{% set label, tone = STATUS.get(run.status, (run.status, "")) %}
 {% set unit = plan.unit if plan else "" %}
+{% set approver = mandate.approver_name if mandate else "the approver" %}
+{% set last_line = run.receipt.split("\n")[-1] if run.receipt else "" %}
 
-<div class="eyebrow">{{ run.buyer_org }} · {{ run.created_at|when }}</div>
+<div class="eyebrow">{{ run.buyer_org }}{% if run.requested_by %} · asked by {{ run.requested_by|person }}{% endif %} · {{ run.created_at|when }}</div>
 <h1>“{{ run.request_text }}”</h1>
 
-<div class="verdict {{ tone }}">
-  <p class="verdict-title">{{ label }}</p>
-  {% if run.status == "ORDERED" %}
-    <p>Every rule in the mandate passed, so the agent placed order <span class="mono">{{ run.order_id }}</span> for {{ run.total_net|eur }} without asking anyone.</p>
+<div class="verdict {{ tone }}" id="verdict" data-status="{{ run.status }}">
+  {% if working %}
+    <p class="verdict-title"><span class="spinner" aria-hidden="true"></span>{{ label }}</p>
+    <p>The agent is working with Valio Aimo. This page follows along by itself.</p>
+  {% elif run.status == "ORDERED" %}
+    <p class="verdict-title">Ordered: {{ run.total_net|eur }}{% if confirmation %}, arriving {{ confirmation.delivery_date|day }}{% endif %}</p>
+    <p>Valio Aimo confirmed order <span class="mono">{{ run.order_id }}</span>. The agent placed it alone because every rule in the mandate passed, and Valio Aimo checked the same mandate before accepting.</p>
   {% elif run.status == "APPROVED" %}
-    <p>{{ approval.approver }} signed this off on {{ approval.decided_at|when }}. Order <span class="mono">{{ run.order_id }}</span> placed for {{ run.total_net|eur }}.</p>
-  {% elif run.status == "NEEDS_HUMAN" and reopened %}
-    <p>Your approval was not applied: something changed after this was sent for approval, so the reasons below
-       include new ones. Nothing has been ordered. Review them and decide again.</p>
+    <p class="verdict-title">Approved and ordered: {{ run.total_net|eur }}{% if confirmation %}, arriving {{ confirmation.delivery_date|day }}{% endif %}</p>
+    <p>{{ approval.approver_name or approval.approver }} approved it on {{ approval.decided_at|when }}. Valio Aimo verified the signed approval and confirmed order <span class="mono">{{ run.order_id }}</span>.</p>
   {% elif run.status == "NEEDS_HUMAN" %}
-    <p>The agent found a plan but is not allowed to place it alone. Nothing has been ordered.</p>
-  {% elif run.status == "REFUSED" %}
-    <p>The mandate does not allow this, and an approver cannot override it. Nothing has been ordered.</p>
+    <p class="verdict-title">Needs {{ approver }}'s approval: {{ run.total_net|eur }}</p>
+    {% if reopened %}
+    <p>An earlier approval was not applied: something changed after this was sent for approval. The reasons below include the new ones.</p>
+    {% else %}
+    <p>The agent found a plan but may not order it alone. Nothing has been ordered.</p>
+    {% endif %}
   {% elif run.status == "DECLINED" %}
-    <p>{{ approval.approver }} declined this on {{ approval.decided_at|when }}. Nothing has been ordered.</p>
+    <p class="verdict-title">Declined by {{ approval.approver_name or approval.approver }}</p>
+    <p>Decided on {{ approval.decided_at|when }}. Nothing was ordered.</p>
+  {% elif run.status == "EXPIRED" %}
+    <p class="verdict-title">Not ordered: Valio Aimo's offer changed</p>
+    <p>{{ last_line }}</p>
+    <p><a href="/" class="small">Ask again for a new plan</a></p>
+  {% elif run.status == "REFUSED" %}
+    <p class="verdict-title">Not ordered</p>
+    <p>{% if "Valio Aimo refused" in last_line %}{{ last_line }}{% else %}The mandate does not allow this, and an approver cannot override it.{% endif %}</p>
   {% elif run.status == "FAILED" %}
-    <p>{{ run.receipt }} Nothing has been ordered. Try again in a moment; the error is in the audit trail below.</p>
+    <p class="verdict-title">Could not finish</p>
+    <p>{{ last_line }} Nothing was ordered.</p>
   {% else %}
+    <p class="verdict-title">Needs more detail</p>
     <p>{{ run.receipt }}</p>
-    <p class="muted">Nothing has been ordered. Rephrase the request with a quantity, a product and a delivery date.</p>
+    <p class="muted small">Nothing was ordered. Try again with a quantity, a product and a delivery date.</p>
   {% endif %}
 
-  {% if fired %}
+  {% if fired and run.status in ("NEEDS_HUMAN", "REFUSED") %}
   <ul class="reasons">
-    {% for f in fired %}
-    <li><span><span class="dot {{ f.tone }}"></span>{{ f.message }}</span><span class="mono">{{ f.rule }}</span></li>
-    {% endfor %}
+    {% for f in fired %}<li><span class="dot {{ f.tone }}"></span>{{ f.message }}</li>{% endfor %}
   </ul>
   {% endif %}
-
-  {% if approval and approval.note %}<p class="small" style="margin-top:12px">Approver's note: {{ approval.note }}</p>{% endif %}
+  {% if approval and approval.note %}<p class="small" style="margin-top:12px">{{ approval.approver_name or approval.approver }}'s note: {{ approval.note }}</p>{% endif %}
 
   {% if run.status == "NEEDS_HUMAN" %}
-  <form method="post" action="/requests/{{ run.trace_id }}/decision" class="actions">
-    <input type="text" name="note" placeholder="Note for the record (optional)" aria-label="Note for the record">
-    <button class="btn" name="action" value="approve">Approve and place order</button>
-    <button class="btn secondary" name="action" value="decline">Decline</button>
-  </form>
-  <p class="small muted" style="margin-top:10px">Deciding as {{ mandate.approver }} for {{ mandate.buyer_org }}. Your decision is signed and added to the audit log.</p>
+    {% if me.id == mandate.approver %}
+    <form method="post" action="/requests/{{ run.trace_id }}/decision" class="actions" id="decide-form">
+      <input type="text" name="note" placeholder="Note for the record (optional)" aria-label="Note for the record">
+      <button class="btn" name="action" value="approve">Approve and order</button>
+      <button class="btn secondary" name="action" value="decline">Decline</button>
+    </form>
+    <p class="small muted" style="margin-top:10px">Your decision is signed with your key. Valio Aimo checks that signature before it accepts the order.</p>
+    {% else %}
+    <p class="small muted" style="margin-top:14px">Only {{ approver }} can approve this. To try it, sign in as {{ approver }} in the sidebar.</p>
+    {% endif %}
   {% endif %}
 </div>
 
-{% if intent %}
 <section>
-  <div class="section-head"><h2>What the agent understood</h2>
-    <span class="muted">{% if intent.parser == "rules" %}Read by rules{% else %}Read by {{ intent.parser.split(":")[1] }}{{ ", cross-checked by rules" if intent.parser.endswith("+rules") else ", not confirmed by rules" }}{% endif %} ·{{ (intent.confidence * 100)|round|int }}% confident</span></div>
-  <dl class="facts">
-    <div><dt>Product</dt><dd>{{ intent.product_terms|join(" ")|capitalize }}</dd></div>
-    <div><dt>Quantity</dt><dd>{{ intent.quantity|qty }} {{ intent.unit }}</dd></div>
-    <div><dt>Deliver by</dt><dd>{{ intent.deadline|when("%a %d %b %Y") }}</dd></div>
-    <div><dt>Budget</dt><dd>{{ intent.max_budget_eur|eur if intent.max_budget_eur else "Not stated" }}</dd></div>
-    <div><dt>Must have</dt><dd>{% for c in intent.required_claims %}{{ c|claim }}{{ ", " if not loop.last }}{% else %}<span class="muted">Nothing stated</span>{% endfor %}</dd></div>
-    <div><dt>Must not contain</dt><dd>{% for a in intent.excluded_allergens %}{{ ALLERGEN_NAMES.get(a, a)|capitalize }}{{ ", " if not loop.last }}{% else %}<span class="muted">Nothing stated</span>{% endfor %}</dd></div>
-    <div><dt>Prefers</dt><dd>{% for k, v in intent.preferences.items() %}{{ k|capitalize }}{{ ": " ~ v if v is string }}{{ ", " if not loop.last }}{% else %}<span class="muted">No preference</span>{% endfor %}</dd></div>
-    <div><dt>Mandate</dt><dd class="mono">{{ run.mandate_id }}</dd></div>
-  </dl>
-  {% if intent.ambiguities %}
-  <ul class="notes">{% for a in intent.ambiguities %}<li>Had to assume: {{ a }}</li>{% endfor %}</ul>
-  {% endif %}
+  <div class="section-head"><h2>How it happened</h2><span class="muted small">Every message between the agent and Valio Aimo</span></div>
+  <div id="timeline">{% include "_timeline.html" %}</div>
 </section>
-{% endif %}
 
-{% if plan %}
+{% if plan and plan.lines %}
 <section>
-  <div class="section-head"><h2>The plan</h2>
-    <span class="muted">{{ plan.covered_quantity|qty }} of {{ plan.requested_quantity|qty }} {{ unit }} covered</span></div>
-  {% if plan.lines %}
+  <div class="section-head"><h2>The order</h2>
+    <span class="muted">{{ plan.covered_quantity|qty }} of {{ plan.requested_quantity|qty }} {{ unit }}</span></div>
   <div class="table-scroll">
   <table>
-    <thead><tr><th>Product</th><th class="num">Order</th><th class="num">Covers</th><th class="num">Per {{ unit }}</th><th class="num">Line total</th><th>Delivery</th></tr></thead>
+    <thead><tr><th>Product</th><th class="num">Quantity</th><th class="num">Per {{ unit }}</th><th class="num">Total</th><th>Delivery</th></tr></thead>
     <tbody>
     {% for l in plan.lines %}
       <tr>
-        <td>{{ l.name }}<span class="sub">{{ l.vendor|title }} · <span class="mono">{{ l.product_id }}</span>{% if l.relaxed_preferences %} · differs on {{ l.relaxed_preferences|join(", ") }}{% endif %}</span></td>
-        <td class="num">{{ l.sales_units|qty }} × {{ l.sales_unit }}</td>
-        <td class="num">{{ l.measure|qty }} {{ unit }}</td>
+        <td>{{ l.name }}<span class="sub">{{ l.vendor|title }}{% if l.relaxed_preferences %} · differs on {{ l.relaxed_preferences|join(", ") }}{% endif %}</span></td>
+        <td class="num">{{ l.sales_units|qty }} × {{ l.sales_unit }}<span class="sub">{{ l.measure|qty }} {{ unit }}</span></td>
         <td class="num">{{ l.comparison_price|eur }}</td>
         <td class="num">{{ l.line_total|eur }}</td>
         <td class="nowrap">{{ l.delivery_date|day }}{% if not l.quantity_confirmed %}<span class="sub">stock not confirmed</span>{% endif %}</td>
@@ -91,62 +91,110 @@
     </tbody>
     <tfoot><tr>
       <td>Total before VAT<span class="sub">{{ plan.total_with_tax|eur }} with VAT</span></td>
-      <td></td><td class="num">{{ plan.covered_quantity|qty }} {{ unit }}</td><td></td>
+      <td class="num">{{ plan.covered_quantity|qty }} {{ unit }}</td><td></td>
       <td class="num">{{ plan.total_net|eur }}</td><td></td>
     </tr></tfoot>
   </table>
   </div>
-  {% else %}
-  <p class="empty">Nothing orderable meets the requirements by the deadline.</p>
-  {% endif %}
   {% if plan.notes or plan.shortfall %}
   <ul class="notes">
     {% if plan.shortfall %}<li>{{ plan.shortfall|qty }} {{ unit }} could not be covered by the deadline.</li>{% endif %}
     {% for n in plan.notes %}<li>{{ n }}</li>{% endfor %}
   </ul>
   {% endif %}
-  {% if plan.rejected %}
-  <details style="margin-top:16px">
-    <summary>{{ plan.rejected|length }} other products looked at and not used</summary>
+</section>
+{% endif %}
+
+<section class="more">
+  {% if intent %}
+  <details>
+    <summary>What the agent understood</summary>
+    <dl class="facts">
+      <div><dt>Product</dt><dd>{{ intent.product_terms|join(" ")|capitalize }}</dd></div>
+      <div><dt>Quantity</dt><dd>{{ intent.quantity|qty }} {{ intent.unit }}</dd></div>
+      <div><dt>Deliver by</dt><dd>{{ intent.deadline|when("%a %d %b %Y") }}</dd></div>
+      <div><dt>Budget</dt><dd>{{ intent.max_budget_eur|eur if intent.max_budget_eur else "Not stated" }}</dd></div>
+      <div><dt>Must have</dt><dd>{% for c in intent.required_claims %}{{ c|claim }}{{ ", " if not loop.last }}{% else %}<span class="muted">Nothing stated</span>{% endfor %}</dd></div>
+      <div><dt>Must not contain</dt><dd>{% for a in intent.excluded_allergens %}{{ ALLERGEN_NAMES.get(a, a)|capitalize }}{{ ", " if not loop.last }}{% else %}<span class="muted">Nothing stated</span>{% endfor %}</dd></div>
+      <div><dt>Prefers</dt><dd>{% for k, v in intent.preferences.items() %}{{ k|capitalize }}{{ ": " ~ v if v is string }}{{ ", " if not loop.last }}{% else %}<span class="muted">No preference</span>{% endfor %}</dd></div>
+      <div><dt>Read by</dt><dd>{% if intent.parser == "rules" %}Rules{% else %}{{ reader(intent.parser) }}{{ ", confirmed by rules" if intent.parser.endswith("+rules") else ", not confirmed by rules" }}{% endif %}</dd></div>
+    </dl>
+    {% if intent.ambiguities %}<ul class="notes">{% for a in intent.ambiguities %}<li>Had to assume: {{ a }}</li>{% endfor %}</ul>{% endif %}
+  </details>
+  {% endif %}
+
+  {% if ok %}
+  <details>
+    <summary>Mandate checks: {{ ok|length }} passed{% if fired %}, {{ fired|length }} not{% endif %}</summary>
+    <ul class="checks">
+      {% for f in fired %}<li class="{{ f.tone }}" title="{{ f.rule }}">{{ f.label }}</li>{% endfor %}
+      {% for c in ok %}<li {% if c.note %}class="note"{% endif %} title="{{ c.rule }}">{{ c.label }}</li>{% endfor %}
+    </ul>
+    <p class="small muted" style="margin:10px 0 14px">Fixed code reading the signed mandate. The language model only reads the request; it cannot change a limit.</p>
+  </details>
+  {% endif %}
+
+  {% if plan and plan.rejected %}
+  <details>
+    <summary>{{ plan.rejected|length }} other products considered</summary>
     <table>
       <thead><tr><th>Product</th><th>Why not</th></tr></thead>
-      <tbody>{% for r in plan.rejected %}<tr><td>{{ r.name }} <span class="mono muted">{{ r.product_id }}</span></td><td>{{ r.reason[:1]|upper }}{{ r.reason[1:] }}</td></tr>{% endfor %}</tbody>
+      <tbody>{% for r in plan.rejected %}<tr><td>{{ r.name }}</td><td>{{ r.reason[:1]|upper }}{{ r.reason[1:] }}</td></tr>{% endfor %}</tbody>
     </table>
   </details>
   {% endif %}
-</section>
-{% endif %}
 
-{% if ok %}
-<section>
-  <div class="section-head"><h2>Mandate checks</h2>
-    <span class="muted">{{ ok|length }} passed{% if fired %}, {{ fired|length }} triggered (shown above){% endif %}</span></div>
-  <ul class="checks">
-    {% for c in ok %}<li {% if c.note %}class="note"{% endif %} title="{{ c.rule }}">{{ c.label }}</li>{% endfor %}
-  </ul>
-  <p class="small muted" style="margin-top:12px">These checks are fixed code reading the signed mandate. The language model reads the request; it cannot change a limit.</p>
-</section>
-{% endif %}
+  <details>
+    <summary>Audit trail: {{ events|length }} entries, hash-chained</summary>
+    <ol class="timeline">
+      {% for e in events %}
+      <li>
+        <span class="t">{{ e.ts|when("%H:%M:%S") }}</span>
+        <span>{{ e.label }}{% if e.summary %}<span class="muted"> · {{ e.summary }}</span>{% endif %}<br><span class="who">{{ e.actor }}</span></span>
+        <span class="hash mono" title="{{ e.hash }}">#{{ e.seq }} {{ e.hash[:10] }}</span>
+      </li>
+      {% endfor %}
+    </ol>
+    {% if approval %}
+    <p class="small" style="margin:12px 0"><span class="dot {{ 'ok' if approval_valid else 'bad' }}"></span>Approval signature {{ "verified" if approval_valid else "INVALID" }} <span class="mono muted">{{ approval.signer_key_id }}</span></p>
+    {% endif %}
+  </details>
 
-<section>
-  <div class="section-head"><h2>Audit trail</h2><span class="muted mono">trace {{ run.trace_id }}</span></div>
-  <ol class="timeline">
-    {% for e in events %}
-    <li>
-      <span class="t">{{ e.ts|when("%H:%M:%S") }}</span>
-      <span>{{ e.label }}{% if e.summary %}<span class="muted"> · {{ e.summary }}</span>{% endif %}<br><span class="who">{{ e.actor }}</span></span>
-      <span class="hash mono" title="{{ e.hash }}">#{{ e.seq }} {{ e.hash[:10] }}</span>
-    </li>
-    {% endfor %}
-  </ol>
-  {% if approval %}
-  <p class="small" style="margin-top:12px"><span class="dot {{ 'ok' if approval_valid else 'bad' }}"></span>Approval record signature {{ "verified" if approval_valid else "INVALID" }} <span class="mono muted">{{ approval.signer_key_id }}</span></p>
-  {% endif %}
   {% if run.receipt and intent %}
-  <details style="margin-top:8px">
+  <details>
     <summary>Plain-text receipt</summary>
     <pre class="receipt">{{ run.receipt }}</pre>
   </details>
   {% endif %}
 </section>
+{% endblock %}
+{% block script %}
+<script>
+  (function () {
+    const verdict = document.getElementById("verdict");
+    if (!["WORKING", "DECIDING"].includes(verdict.dataset.status)) return;
+    const timeline = document.getElementById("timeline");
+    async function poll() {
+      try {
+        const r = await fetch(location.pathname + "/live", {cache: "no-store"});
+        const data = await r.json();
+        const open = [...timeline.querySelectorAll("details[open]")].map(d => d.closest("li") && [...timeline.querySelectorAll("li")].indexOf(d.closest("li")));
+        timeline.innerHTML = data.html;
+        const items = [...timeline.querySelectorAll("li")];
+        open.forEach(i => { const d = items[i] && items[i].querySelector("details"); if (d) d.open = true; });
+        if (data.status !== verdict.dataset.status) { location.reload(); return; }
+      } catch (e) { /* keep trying */ }
+      setTimeout(poll, 700);
+    }
+    setTimeout(poll, 400);
+  })();
+  const form = document.getElementById("decide-form");
+  if (form) form.addEventListener("submit", e => {
+    form.querySelectorAll("button").forEach(b => b.disabled = true);
+    const hidden = document.createElement("input");
+    hidden.type = "hidden"; hidden.name = "action"; hidden.value = e.submitter ? e.submitter.value : "approve";
+    form.appendChild(hidden);
+    if (e.submitter) e.submitter.textContent = e.submitter.value === "approve" ? "Ordering…" : "Declining…";
+  });
+</script>
 {% endblock %}

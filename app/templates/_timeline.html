@@ -1,0 +1,40 @@
+<div class="lanes-head" aria-hidden="true">
+  <div><span class="lane-tag buyer">Buyer</span>{{ run.buyer_org }}'s agent</div>
+  <div></div>
+  <div><span class="lane-tag aimo">Wholesaler</span>Valio Aimo gateway</div>
+</div>
+<ol class="story">
+  {% for s in steps %}
+  {% if s.lane == "exchange" %}
+  <li class="ex {{ 'ok' if s.ok else 'bad' }}">
+    <div class="card ask"><strong>{{ s.ask }}</strong>{% if s.ask_detail %}<span>{{ s.ask_detail }}</span>{% endif %}</div>
+    <div class="wire" aria-hidden="true"><span class="arrow to"></span><span class="arrow from"></span></div>
+    <div class="card answer {{ 'bad' if not s.ok }}">
+      <strong>{{ s.answer }}</strong>{% if s.answer_detail %}<span>{{ s.answer_detail }}</span>{% endif %}
+      {% if s.checks %}
+      <ul class="gchecks">
+        {% for c in s.checks %}<li class="{{ 'ok' if c.ok else 'bad' }}">{{ c.message }}</li>{% endfor %}
+      </ul>
+      {% endif %}
+    </div>
+    <details class="raw">
+      <summary>Show the messages <span class="mono">{{ s.http }}</span></summary>
+      <div class="raw-grid">
+        <div><div class="raw-label">Agent sent</div><pre>{{ s.request_pretty }}</pre></div>
+        <div><div class="raw-label">Valio Aimo answered</div><pre>{{ s.response_pretty }}</pre></div>
+      </div>
+    </details>
+  </li>
+  {% else %}
+  <li class="solo {{ s.lane }} {{ s.tone }}">
+    <div class="card"><strong>{{ s.title }}</strong>{% if s.detail %}<span>{{ s.detail }}</span>{% endif %}</div>
+  </li>
+  {% endif %}
+  {% endfor %}
+  {% if working %}
+  <li class="solo agent busy"><div class="card"><strong><span class="spinner" aria-hidden="true"></span>Working…</strong></div></li>
+  {% endif %}
+  {% if not steps and not working %}
+  <li class="solo agent"><div class="card"><span>This request was handled before step-by-step records existed. See the audit trail below.</span></div></li>
+  {% endif %}
+</ol>

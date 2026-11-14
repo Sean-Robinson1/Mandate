@@ -10,6 +10,11 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from protocol.mandate import Bands, HardConstraints, Mandate, SpendLimits, SubstitutionPolicy  # noqa: F401  re-used here
+
+__all__ = ["Unit", "Decision", "IntentSpec", "Candidate", "Rejection", "PlanLine", "Plan", "PolicyContext",
+           "PolicyReason", "PolicyResult", "Mandate", "SpendLimits", "Bands", "HardConstraints", "SubstitutionPolicy"]
+
 
 class Unit(str, Enum):
     L = "L"
@@ -122,60 +127,6 @@ class Plan(BaseModel):
     cheapest_overall_price: float | None = None   # cheapest orderable EUR per L/kg ignoring soft preferences
     rejected: list[Rejection] = Field(default_factory=list)
     notes: list[str] = Field(default_factory=list)
-
-
-# ---------------------------------------------------------------- mandate
-
-class SpendLimits(BaseModel):
-    per_order_auto_eur: float                     # at or below: agent may order alone
-    per_order_max_eur: float                      # above: refused outright
-    per_week_auto_eur: float                      # weekly total at or below: agent may order alone
-
-
-class Bands(BaseModel):
-    """Green up to *_auto, amber up to *_max, red beyond."""
-
-    price_premium_auto_pct: float = 5.0           # plan avg price vs reference_price
-    price_premium_max_pct: float = 20.0
-    overage_auto_pct: float = 3.0                 # covered above requested (pack rounding)
-    overage_max_pct: float = 15.0
-    shortfall_max_pct: float = 50.0               # any shortfall needs a human; beyond this it is refused
-    late_days_max: int = 0                        # days after deadline a human may still approve
-    min_intent_confidence: float = 0.8            # below: ask the human
-    min_reliability_auto: float = 0.9             # known reliability below this needs a human
-
-
-class HardConstraints(BaseModel):
-    """Never relaxable by the agent or by an approver."""
-
-    required_claims: list[str] = Field(default_factory=list)
-    excluded_allergens: list[str] = Field(default_factory=list)    # CONTAINS is always a violation
-    exclude_may_contain: bool = False             # MAY_CONTAIN is also a violation
-    require_allergen_data: bool = False           # products without allergen data are refused
-
-
-class SubstitutionPolicy(BaseModel):
-    relaxable_preferences: list[str] = Field(default_factory=list)  # soft prefs the agent may relax alone
-    allow_split_orders: bool = True
-
-
-class Mandate(BaseModel):
-    """What the buyer organisation authorises its agent to do. Signed by the organisation."""
-
-    mandate_id: str
-    buyer_org: str
-    agent_id: str
-    valid_from: date
-    valid_until: date
-    currency: str = "EUR"
-    limits: SpendLimits
-    bands: Bands = Field(default_factory=Bands)
-    allowed_categories: list[str] | None = None   # category code prefixes; None = any
-    hard_constraints: HardConstraints = Field(default_factory=HardConstraints)
-    substitution: SubstitutionPolicy = Field(default_factory=SubstitutionPolicy)
-    approver: str = "purchasing-manager"
-    signature: str | None = None                  # base64 Ed25519 over canonical JSON without this field
-    signer_key_id: str | None = None
 
 
 # ---------------------------------------------------------------- policy

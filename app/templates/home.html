@@ -1,33 +1,22 @@
 {% extends "base.html" %}
 {% block title %}New request · Trusted Trade{% endblock %}
 {% block content %}
-<h1>What do you need?</h1>
-<p class="lede">Describe the order in plain words. The agent asks Valio Aimo for live prices and availability,
-  builds the cheapest plan that meets your requirements, and orders it only if your mandate allows.</p>
+<div class="eyebrow">{{ my_org.buyer_org }} · {{ me.name }}, {{ me.role|lower }}</div>
+<h1>What does the kitchen need?</h1>
+<p class="lede">Say it in plain words. The purchasing agent gets a signed offer from Valio Aimo, picks the best option,
+  and orders it if the mandate allows. Otherwise it asks {{ my_org.approver_name }}.</p>
 
 <form class="stack" method="post" action="/requests" id="request-form" style="margin-top:28px">
   <div>
     <label class="field-label" for="text">Request</label>
     <textarea id="text" name="text" required placeholder="I need 1,000 litres of lactose-free milk by Monday.">{{ examples[0][1] }}</textarea>
   </div>
-  <div>
-    <span class="field-label">Ordering for</span>
-    <div class="choices">
-      {% for key, m in mandates.items() %}
-      <label class="choice">
-        <input type="radio" name="mandate" value="{{ key }}" {% if loop.first %}checked{% endif %}>
-        <div class="choice-name">{{ m.buyer_org }}</div>
-        <div class="choice-facts">
-          Agent orders alone up to {{ m.limits.per_order_auto_eur|eur }} per order
-          {%- if m.hard_constraints.excluded_allergens %}. Never:
-            {% for a in m.hard_constraints.excluded_allergens %}{{ ALLERGEN_NAMES.get(a, a) }}{{ ", " if not loop.last }}{% endfor %}
-          {%- endif %}.
-        </div>
-      </label>
-      {% endfor %}
-    </div>
+  <div class="form-foot">
+    <button class="btn" type="submit" id="submit">Send to the agent</button>
+    <span class="small muted">The agent may order up to {{ my_org.limits.per_order_auto_eur|eur }} alone
+      {%- if my_org.hard_constraints.excluded_allergens %}, never with {% for a in my_org.hard_constraints.excluded_allergens %}{{ ALLERGEN_NAMES.get(a, a) }}{{ ", " if not loop.last }}{% endfor %}{% endif %}.
+      <a href="/mandates">Mandate</a></span>
   </div>
-  <div><button class="btn" type="submit" id="submit">Find and order</button></div>
 </form>
 
 <section>
@@ -52,7 +41,7 @@
   }));
   document.getElementById("request-form").addEventListener("submit", () => {
     const btn = document.getElementById("submit");
-    btn.disabled = true; btn.textContent = "Asking Valio Aimo…";
+    btn.disabled = true; btn.textContent = "Sending…";
   });
 </script>
 {% endblock %}

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://example.org/trusted-trade/mandate.schema.json",
   "title": "Trusted Trade purchasing mandate",
-  "description": "What a buyer organisation authorises its purchasing agent to do: spend limits, tolerance bands, hard constraints and substitution rules. Signed by the organisation (Ed25519 over the canonical JSON without `signature` and `signer_key_id`).",
+  "description": "What a buyer organisation authorises its purchasing agent to do: spend limits, tolerance bands, hard constraints and substitution rules. Signed by the organisation (Ed25519 over the canonical JSON without `signature` and `signer_key_id`). Valio Aimo's gateway verifies it against the organisation's registered key and enforces its hard limits.",
   "$defs": {
     "Bands": {
       "description": "Green up to *_auto, amber up to *_max, red beyond.",
@@ -137,6 +137,18 @@
       "title": "Agent Id",
       "type": "string"
     },
+    "agent_public_key": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Agent Public Key"
+    },
     "valid_from": {
       "format": "date",
       "title": "Valid From",
@@ -183,6 +195,23 @@
       "default": "purchasing-manager",
       "title": "Approver",
       "type": "string"
+    },
+    "approver_name": {
+      "default": "",
+      "title": "Approver Name",
+      "type": "string"
+    },
+    "approver_public_key": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Approver Public Key"
     },
     "signature": {
       "anyOf": [

@@ -2,19 +2,19 @@
 {% block title %}Approvals · Trusted Trade{% endblock %}
 {% block content %}
 <h1>Approvals</h1>
-<p class="lede">Plans the agent built but may not place alone. Nothing here has been ordered.</p>
+<p class="lede">Plans the agent may not order alone. Nothing here has been ordered yet.</p>
 <section style="margin-top:28px">
   {% if rows %}
   <div class="table-scroll">
   <table>
-    <thead><tr><th>Request</th><th>Why it needs you</th><th class="num">Total</th><th>Asked</th><th></th></tr></thead>
+    <thead><tr><th>Request</th><th>Why it needs a person</th><th class="num">Total</th><th>Approver</th><th></th></tr></thead>
     <tbody>
     {% for r in rows %}
       <tr>
-        <td>{{ r.request_text|truncate(60) }}<span class="sub">{{ r.buyer_org }}</span></td>
+        <td>{{ r.request_text|truncate(60) }}<span class="sub">{{ r.buyer_org }} · {{ r.created_at|when("%d %b, %H:%M") }}</span></td>
         <td class="small">{% for m in reasons[r.trace_id] %}{{ m }}{% if not loop.last %}<br>{% endif %}{% endfor %}</td>
         <td class="num">{{ r.total_net|eur }}</td>
-        <td class="small muted nowrap">{{ r.created_at|when("%d %b, %H:%M") }}</td>
+        <td class="small nowrap">{{ approvers.get(r.trace_id, "–") }}</td>
         <td class="num"><a class="btn secondary" href="/requests/{{ r.trace_id }}">Review</a></td>
       </tr>
     {% endfor %}

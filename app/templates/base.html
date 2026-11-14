@@ -9,8 +9,8 @@
 <body>
 <div class="shell">
   <aside class="side">
-    <a class="brand" href="/">Trusted Trade</a>
-    <div class="brand-sub">Purchasing agent for Valio Aimo</div>
+    <a class="brand" href="/"><span class="brand-mark" aria-hidden="true"></span>Trusted Trade</a>
+    <div class="brand-sub">{{ my_org.buyer_org }}</div>
     <nav class="nav" aria-label="Main">
       <a href="/" {% if active == "new" %}aria-current="page"{% endif %}>New request</a>
       <a href="/approvals" {% if active == "approvals" %}aria-current="page"{% endif %}>Approvals
@@ -20,9 +20,19 @@
       <a href="/audit" {% if active == "audit" %}aria-current="page"{% endif %}>Audit log</a>
     </nav>
     <div class="side-foot">
-      <a href="/audit">
-        <strong><span class="dot {{ 'ok' if chain.ok else 'bad' }}"></span>{{ "Audit log intact" if chain.ok else "Audit log altered" }}</strong>
-        {{ chain.events_checked }} events, hash chain {{ "verified" if chain.ok else "broken at #" ~ chain.first_bad_seq }}
+      <form method="post" action="/session" class="whoami">
+        <label for="person" class="whoami-label">Signed in as</label>
+        <select id="person" name="person" onchange="this.form.submit()">
+          {% for p in PEOPLE.values() %}
+          <option value="{{ p.id }}" {% if p.id == me.id %}selected{% endif %}>{{ p.name }} · {{ p.role }}</option>
+          {% endfor %}
+        </select>
+        <input type="hidden" name="back" value="{{ request.url.path }}">
+        <noscript><button class="btn secondary small-btn">Switch</button></noscript>
+      </form>
+      <a href="/audit" class="chain-status">
+        <span class="dot {{ 'ok' if chain.ok else 'bad' }}"></span>{{ "Audit log intact" if chain.ok else "Audit log altered" }}
+        <span class="muted">· {{ chain.events_checked }} entries</span>
       </a>
     </div>
   </aside>

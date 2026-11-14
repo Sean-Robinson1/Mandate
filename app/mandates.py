@@ -1,13 +1,33 @@
-"""Demo mandates, canonical serialisation for signing, and the mandate JSON Schema."""
+"""The two demo buyers, their people, and the mandate JSON Schema.
+
+A mandate here is the organisation's *intent*. It becomes authority only once the organisation signs it with
+its own key (app/keys.py issues and stores the signed copy; nothing re-signs it afterwards).
+"""
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import date
 
-from app.models import Bands, HardConstraints, Mandate, SpendLimits, SubstitutionPolicy
-from app.signing import canonical_bytes
+from protocol.mandate import Bands, HardConstraints, Mandate, SpendLimits, SubstitutionPolicy
+from protocol.signing import canonical_bytes
 
 _VALID_FROM = date(2026, 11, 1)
 _VALID_UNTIL = date(2026, 12, 31)
+
+
+@dataclass(frozen=True)
+class Person:
+    id: str
+    name: str
+    role: str
+    org_key: str            # which buyer they belong to
+
+
+PEOPLE: dict[str, Person] = {p.id: p for p in [
+    Person("aino.koskinen", "Aino Koskinen", "Head chef", "hotel"),
+    Person("mikko.laine", "Mikko Laine", "Purchasing manager", "hotel"),
+    Person("sari.virtanen", "Sari Virtanen", "Kitchen manager", "school"),
+]}
 
 DEMO_MANDATES: dict[str, Mandate] = {
     "hotel": Mandate(
@@ -21,6 +41,8 @@ DEMO_MANDATES: dict[str, Mandate] = {
         substitution=SubstitutionPolicy(
             relaxable_preferences=["brand", "pack_size"], allow_split_orders=True
         ),
+        approver="mikko.laine",
+        approver_name="Mikko Laine",
     ),
     "school": Mandate(
         mandate_id="mandate-school-001",
@@ -36,12 +58,14 @@ DEMO_MANDATES: dict[str, Mandate] = {
             require_allergen_data=True,
         ),
         substitution=SubstitutionPolicy(relaxable_preferences=["brand"]),
+        approver="sari.virtanen",
+        approver_name="Sari Virtanen",
     ),
 }
 
 
 def canonical_json(mandate: Mandate) -> bytes:
-    """Deterministic bytes to sign: everything except the signature fields (same encoding as app.signing)."""
+    """Deterministic bytes to sign: everything except the signature fields (same encoding as protocol.signing)."""
     return canonical_bytes(mandate.model_dump(mode="json", exclude={"signature", "signer_key_id"}))
 
 
@@ -56,7 +80,8 @@ def mandate_json_schema() -> dict:
         "description": (
             "What a buyer organisation authorises its purchasing agent to do: spend limits, "
             "tolerance bands, hard constraints and substitution rules. Signed by the organisation "
-            "(Ed25519 over the canonical JSON without `signature` and `signer_key_id`)."
+            "(Ed25519 over the canonical JSON without `signature` and `signer_key_id`). Valio Aimo's gateway "
+            "verifies it against the organisation's registered key and enforces its hard limits."
         ),
         **schema,
     }

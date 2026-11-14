@@ -16,7 +16,7 @@ from typing import Protocol
 
 import httpx
 
-from app import config
+import settings as config
 
 
 class LLMError(RuntimeError):

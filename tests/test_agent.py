@@ -1,8 +1,4 @@
-"""End-to-end agent tests against a fake Valio Aimo API and a real SQLite file (no network, no LLM).
-
-Prices are 1.00 EUR per litre in 1-litre packs, so an order's total in EUR equals its litres.
-Hotel mandate: the agent may order up to 2,500 EUR alone, 8,000 EUR a week; 10,000 EUR per order is the cap.
-"""
+"""End-to-end: the buyer's agent ordering through Valio Aimo's gateway (see conftest.py for the world)."""
 import json
 import threading
 import time
@@ -10,183 +6,191 @@ from datetime import datetime, timedelta
 
 import pytest
 from sqlalchemy import select
-from sqlalchemy.orm import sessionmaker
 
-from app import agent, catalog, config, trust
+from app import agent, keys
 from app.audit import AuditEvent, verify_chain
-from app.db import Order, Run, init_db, make_engine
-from app.mandates import DEMO_MANDATES
-from app.valio_client import Money, ProductAvailability, ProductPrice, ScheduleLine
-
-NOW = datetime(2026, 11, 13, 12, 0, tzinfo=config.HELSINKI)        # Friday
-CLOSING = datetime(2026, 11, 15, 17, 0, tzinfo=config.HELSINKI)    # Sunday 17:00 cut-off for Monday delivery
-HOTEL = trust.sign_mandate(DEMO_MANDATES["hotel"])
+from app.db import Order, Run, Step
+from protocol.signing import verify_document
+from tests.conftest import CLOSING, NOW
 
 
-def product(pid: str) -> dict:
-    return {"id": pid, "gtin": None, "names": {"en": f"Lactose-free milk 1l {pid}"}, "brand": "Valio",
-            "vendor": "VALIO OY", "category": "10400", "sales_unit": "ST", "contains": ["AM"], "may_contain": [],
-            "free_from": [], "claims": ["FREE_FROM_LACTOSE"], "labels": [], "has_allergen_data": True,
-            "reliability": 0.99, "co2_per_kg": None, "description_en": None}
+def order(world, litres: int, now: datetime = NOW, buyer: str = "hotel", text: str | None = None):
+    text = text or f"I need {litres:,} litres of lactose-free milk by Monday"
+    with world.buyer_db() as s:
+        return agent.run(text, world.mandates[buyer], s, world.client, now=now)
 
 
-INDEX = [product("100001"), product("100002")]
+def decide(world, trace_id: str, approve: bool = True, now: datetime = NOW + timedelta(minutes=5)) -> Run:
+    world.clock.now = now
+    with world.buyer_db() as s:
+        return agent.decide(s, trace_id, world.mandates["hotel"], approve=approve, gateway=world.client, now=now)
 
 
-class FakeValio:
-    def __init__(self, fail: bool = False, delay: float = 0.0):
-        self.fail, self.delay = fail, delay
-
-    def prices(self, ids, requested):
-        time.sleep(self.delay)
-        if self.fail:
-            raise RuntimeError("Valio API /api/price failed after 3 attempts: HTTP 503")
-        return {i: ProductPrice(productId=i, catalogPrice=Money(value=1.0, valueWithTax=1.14),
-                                comparisonPrice=Money(value=1.0), comparisonUnit="L") for i in ids}
-
-    def availability(self, ids, requested):
-        # Cut-off at 17:00 the day before delivery (CLOSING for a Monday delivery).
-        closing = datetime.combine(requested - timedelta(days=1), CLOSING.timetz())
-        return {i: ProductAvailability(productId=i, closingTime=closing, logisticModel="Stock",
-                                       scheduleLines=[ScheduleLine(availableAmount=100_000, availableDate=requested)])
-                for i in ids}
+def orders(world, status: str = "PLACED") -> list[Order]:
+    with world.buyer_db() as s:
+        return list(s.scalars(select(Order).where(Order.status == status)))
 
 
-@pytest.fixture(autouse=True)
-def synthetic_catalog(monkeypatch):
-    monkeypatch.setattr(catalog, "load_index", lambda: INDEX)
+def supplier_orders(world) -> int:
+    from gateway.store import OrderRecord
+    with world.gateway.sessions() as s:
+        return len(list(s.scalars(select(OrderRecord))))
 
 
-@pytest.fixture
-def db(tmp_path):
-    engine = make_engine(f"sqlite:///{tmp_path / 'test.db'}")
-    init_db(engine)
-    yield sessionmaker(engine, expire_on_commit=False)
-    engine.dispose()
-
-
-def order(db, litres: int, now: datetime = NOW, api=None) -> agent.RunResult:
-    with db() as s:
-        return agent.run(f"I need {litres:,} litres of lactose-free milk by Monday", HOTEL, s, api or FakeValio(),
-                         now=now)
-
-
-def decide(db, trace_id: str, approve: bool = True, now: datetime = NOW + timedelta(minutes=5)) -> Run:
-    with db() as s:
-        return agent.decide(s, trace_id, HOTEL, approve=approve, now=now)
-
-
-def orders(db) -> list[Order]:
-    with db() as s:
-        return list(s.scalars(select(Order)))
-
-
-def chain_ok(db) -> bool:
-    with db() as s:
+def chain_ok(world) -> bool:
+    with world.buyer_db() as s:
         return verify_chain(s).ok
 
 
-def event_types(db, trace_id: str) -> list[str]:
-    with db() as s:
+def event_types(world, trace_id: str) -> list[str]:
+    with world.buyer_db() as s:
         return list(s.scalars(select(AuditEvent.event_type).where(AuditEvent.trace_id == trace_id)
                               .order_by(AuditEvent.seq)))
 
 
+def step_paths(world, trace_id: str) -> list[str]:
+    with world.buyer_db() as s:
+        return [f"{x.method} {x.path.split('?')[0]}" if x.lane == "exchange" else x.lane
+                for x in s.scalars(select(Step).where(Step.trace_id == trace_id).order_by(Step.id))]
+
+
 # ---------------------------------------------------------------- run
 
-def test_within_authority_orders_automatically(db):
-    r = order(db, 1000)
-    assert r.status == "ORDERED" and r.plan.total_net == 1000
-    assert [o.trace_id for o in orders(db)] == [r.trace_id]
-    assert event_types(db, r.trace_id) == ["request.received", "intent.parsed", "candidates.considered",
-                                           "plan.chosen", "policy.evaluated", "order.placed"]
-    assert chain_ok(db)
+def test_within_authority_orders_through_valio_aimo(world):
+    r = order(world, 1000)
+    assert r.status == "ORDERED" and r.plan.total_net == 1000 and r.order_id.startswith("AIMO-")
+    placed = orders(world)
+    assert [o.trace_id for o in placed] == [r.trace_id] and supplier_orders(world) == 1
+    confirmation = json.loads(placed[0].confirmation_json)
+    assert verify_document(confirmation, world.gateway.signer.public_key_b64())
+    assert [c["check"] for c in confirmation["checks"] if not c["ok"]] == []
+    assert event_types(world, r.trace_id) == ["request.received", "intent.parsed", "offer.received", "plan.chosen",
+                                              "policy.evaluated", "order.reserved", "order.confirmed"]
+    assert [p for p in step_paths(world, r.trace_id) if p != "agent"] == [
+        "GET /.well-known/jwks.json", "GET /v1/products", "POST /v1/offers", "POST /v1/orders"]
+    assert chain_ok(world)
 
 
-def test_over_the_order_limit_waits_for_a_human(db):
-    r = order(db, 3000)
+def test_over_the_order_limit_waits_for_a_person(world):
+    r = order(world, 3000)
     assert r.status == "NEEDS_HUMAN" and [x.rule for x in r.policy.reasons] == ["spend.per_order"]
-    assert orders(db) == []
+    assert orders(world) == [] and supplier_orders(world) == 0
 
 
-def test_unreadable_request_asks_and_is_audited(db):
-    with db() as s:
-        r = agent.run("Can you get us some milk?", HOTEL, s, FakeValio(), now=NOW)
+def test_unreadable_request_asks_and_is_audited(world):
+    with world.buyer_db() as s:
+        r = agent.run("Can you get us some milk?", world.mandates["hotel"], s, world.client, now=NOW)
     assert r.status == "NEEDS_CLARIFICATION"
-    assert event_types(db, r.trace_id) == ["request.received", "clarification.requested"]
-    assert chain_ok(db)
+    assert event_types(world, r.trace_id) == ["request.received", "clarification.requested"]
 
 
-def test_lookup_failure_stops_and_is_audited(db):
-    r = order(db, 1000, api=FakeValio(fail=True))
-    assert r.status == "FAILED" and orders(db) == []
-    assert event_types(db, r.trace_id)[-1] == "lookup.failed"
-    assert chain_ok(db)
+def test_backend_failure_stops_cleanly(world):
+    world.backend.fail = True
+    r = order(world, 1000)
+    assert r.status == "FAILED" and orders(world) == []
+    assert event_types(world, r.trace_id)[-1] == "lookup.failed" and chain_ok(world)
+
+
+def test_a_forged_offer_is_not_trusted(world, monkeypatch):
+    original = world.gateway.offer
+
+    def tampered(req):
+        signed = original(req)
+        signed["items"][0]["unit_price"] = 0.01           # someone in the middle lowers a price
+        return signed
+
+    monkeypatch.setattr(world.gateway, "offer", tampered)
+    r = order(world, 1000)
+    assert r.status == "FAILED" and "not signed by Valio Aimo" in r.receipt
+    assert supplier_orders(world) == 0
+
+
+def test_an_edited_mandate_is_refused_by_both_sides(world):
+    """Someone raises the hotel's limit in the stored mandate file: the signature no longer matches."""
+    forged = world.mandates["hotel"].model_copy(update={"limits": world.mandates["hotel"].limits.model_copy(
+        update={"per_order_auto_eur": 1_000_000})})
+    with world.buyer_db() as s:
+        r = agent.run("I need 1,000 litres of lactose-free milk by Monday", forged, s, world.client, now=NOW)
+    assert r.status == "REFUSED" and "mandate.signature" in [x.rule for x in r.policy.reasons]
+    assert supplier_orders(world) == 0
 
 
 # ---------------------------------------------------------------- decide
 
-def test_approval_places_the_order_with_a_signed_record(db):
-    r = order(db, 3000)
-    row = decide(db, r.trace_id)
-    assert row.status == "APPROVED" and [o.trace_id for o in orders(db)] == [r.trace_id]
+def test_approval_is_signed_and_checked_by_valio_aimo(world):
+    r = order(world, 3000)
+    row = decide(world, r.trace_id)
+    assert row.status == "APPROVED" and supplier_orders(world) == 1
     record = json.loads(row.approval_json)
-    assert record["decision"] == "APPROVED" and record["rules_signed_off"] == ["spend.per_order"]
-    assert trust.verify_approval(record, HOTEL.approver)
-    assert chain_ok(db)
+    assert record["decision"] == "APPROVED" and record["approver_name"] == "Mikko Laine"
+    assert keys.verify_approval(record, world.mandates["hotel"])
+    confirmation = json.loads(orders(world)[0].confirmation_json)
+    assert confirmation["approved_by"] == "Mikko Laine"
+    assert any(c["check"] == "authority" and "approved by Mikko Laine" in c["message"] for c in confirmation["checks"])
+    assert chain_ok(world)
 
 
-def test_decline_places_nothing(db):
-    r = order(db, 3000)
-    assert decide(db, r.trace_id, approve=False).status == "DECLINED"
-    assert orders(db) == []
+def test_decline_places_nothing(world):
+    r = order(world, 3000)
+    assert decide(world, r.trace_id, approve=False).status == "DECLINED"
+    assert orders(world) == [] and supplier_orders(world) == 0
 
 
-def test_a_request_can_only_be_decided_once(db):
-    r = order(db, 3000)
-    decide(db, r.trace_id)
+def test_a_request_can_only_be_decided_once(world):
+    r = order(world, 3000)
+    decide(world, r.trace_id)
     with pytest.raises(ValueError):
-        decide(db, r.trace_id)
-    assert len(orders(db)) == 1
+        decide(world, r.trace_id)
+    assert supplier_orders(world) == 1
 
 
-def test_new_reason_at_sign_off_sends_it_back_instead_of_ordering(db):
+def test_new_reason_at_sign_off_sends_it_back_instead_of_ordering(world):
     """A (3,000) and B (6,000) each need approval for size only. Approving B first means approving A would
     take the week to 9,000, over the 8,000 weekly limit the approver of A never saw."""
-    a, b = order(db, 3000), order(db, 6000)
-    assert decide(db, b.trace_id).status == "APPROVED"
-
-    row = decide(db, a.trace_id)
-    assert row.status == "NEEDS_HUMAN" and row.order_id is None and row.approval_json == ""
-    assert "spend.per_week" in row.policy_json
-    assert event_types(db, a.trace_id)[-1] == "approval.reopened"
-    assert [o.trace_id for o in orders(db)] == [b.trace_id]
-
-    # Approving again, now having seen the weekly limit, goes through.
-    assert decide(db, a.trace_id).status == "APPROVED"
-    assert len(orders(db)) == 2 and chain_ok(db)
+    a, b = order(world, 3000), order(world, 6000)
+    assert decide(world, b.trace_id).status == "APPROVED"
+    row = decide(world, a.trace_id)
+    assert row.status == "NEEDS_HUMAN" and row.order_id is None and "spend.per_week" in row.policy_json
+    assert event_types(world, a.trace_id)[-1] == "approval.reopened"
+    assert supplier_orders(world) == 1
+    assert decide(world, a.trace_id).status == "APPROVED"       # approved again, having seen the weekly limit
+    assert supplier_orders(world) == 2 and chain_ok(world)
 
 
-def test_hard_rule_at_sign_off_refuses_even_when_approved(db):
-    r = order(db, 3000)
-    row = decide(db, r.trace_id, now=CLOSING + timedelta(minutes=1))
-    assert row.status == "REFUSED" and orders(db) == []
-    assert event_types(db, r.trace_id)[-2:] == ["approval.decided", "order.refused"]
+def test_hard_rule_at_sign_off_refuses_even_when_approved(world):
+    r = order(world, 3000)
+    row = decide(world, r.trace_id, now=CLOSING + timedelta(minutes=1))
+    assert row.status == "REFUSED" and supplier_orders(world) == 0
 
 
-def test_weekly_spend_resets_on_monday(db):
+def test_expired_offer_is_renewed_when_nothing_changed(world):
+    r = order(world, 3000)
+    row = decide(world, r.trace_id, now=NOW + timedelta(minutes=40))
+    assert row.status == "APPROVED" and supplier_orders(world) == 1
+    assert step_paths(world, r.trace_id).count("POST /v1/offers") == 2
+
+
+def test_changed_price_after_approval_orders_nothing(world):
+    r = order(world, 3000)
+    world.backend.price = 1.10
+    row = decide(world, r.trace_id, now=NOW + timedelta(minutes=40))
+    assert row.status == "EXPIRED" and supplier_orders(world) == 0 and orders(world, "RESERVED") == []
+    assert "now costs" in row.receipt
+
+
+def test_weekly_spend_resets_on_monday(world):
     for _ in range(4):
-        assert order(db, 2000).status == "ORDERED"            # 8,000 this week: at the limit
-    assert order(db, 2000).status == "NEEDS_HUMAN"
-    next_week = NOW + timedelta(days=3, hours=-6)               # Monday 06:00, before the new deadline
-    with db() as s:
-        r = agent.run("I need 2,000 litres of lactose-free milk by Wednesday", HOTEL, s, FakeValio(), now=next_week)
+        assert order(world, 2000).status == "ORDERED"            # 8,000 this week: at the limit
+    assert order(world, 2000).status == "NEEDS_HUMAN"
+    monday = NOW + timedelta(days=3, hours=-6)                  # Monday 06:00
+    world.clock.now = monday
+    r = order(world, 2000, now=monday, text="I need 2,000 litres of lactose-free milk by Wednesday")
     assert r.status == "ORDERED"
 
 
 # ---------------------------------------------------------------- concurrency
 
-def run_concurrently(n: int, fn) -> list:
+def run_concurrently(n: int, fn):
     barrier, results, errors = threading.Barrier(n), [None] * n, []
 
     def worker(i):
@@ -204,27 +208,28 @@ def run_concurrently(n: int, fn) -> list:
     return results, errors
 
 
-def test_concurrent_requests_cannot_overspend_the_week_or_fork_the_chain(db):
+def test_concurrent_requests_cannot_overspend_the_week(world):
     """Six simultaneous 2,000 EUR requests, each within the per-order limit: only four fit in 8,000.
 
-    The lookup takes a second, as a real one can. No database lock may be held across it: if runs queued
-    behind each other's lookups (6+ s here), a real LLM call would push them past SQLite's lock timeout.
+    The backend takes half a second, as a real one can. No database lock may be held across it: runs queued
+    behind each other's lookups would take 3+ s here, and a real LLM call would push them past SQLite's timeout.
     """
-    slow = FakeValio(delay=1.0)
+    world.backend.delay = 0.5
     started = time.monotonic()
-    results, errors = run_concurrently(6, lambda i: order(db, 2000, api=slow).status)
+    results, errors = run_concurrently(6, lambda i: order(world, 2000).status)
     assert errors == []
-    assert time.monotonic() - started < 4, "runs were serialised behind each other's lookups"
+    assert time.monotonic() - started < 2.5, "runs were serialised behind each other's lookups"
     assert sorted(results) == ["NEEDS_HUMAN"] * 2 + ["ORDERED"] * 4
-    assert sum(o.total_net for o in orders(db)) == 8000
-    with db() as s:
+    assert supplier_orders(world) == 4 and sum(o.total_net for o in orders(world)) == 8000
+    with world.buyer_db() as s:
         seqs = list(s.scalars(select(AuditEvent.seq).order_by(AuditEvent.seq)))
-    assert seqs == list(range(1, len(seqs) + 1)) and chain_ok(db)
+    assert seqs == list(range(1, len(seqs) + 1)) and chain_ok(world)
 
 
-def test_concurrent_approvals_place_one_order(db):
-    r = order(db, 3000)
-    results, errors = run_concurrently(4, lambda i: decide(db, r.trace_id).status)
+def test_concurrent_approvals_place_one_order(world):
+    r = order(world, 3000)
+    world.clock.now = NOW + timedelta(minutes=5)
+    results, errors = run_concurrently(4, lambda i: decide(world, r.trace_id).status)
     assert [x for x in results if x] == ["APPROVED"]
     assert len(errors) == 3 and all(isinstance(e, ValueError) for e in errors)
-    assert len(orders(db)) == 1 and chain_ok(db)
+    assert supplier_orders(world) == 1 and chain_ok(world)

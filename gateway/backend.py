@@ -1,6 +1,7 @@
-"""Thin typed client for the Valio Aimo mock API (price + availability).
+"""Valio Aimo's backend systems, as provided by the challenge: the mock price and availability API.
 
-The mock has no order endpoint; ordering is mocked locally in app.agent.place_order (see ASSUMPTIONS.md).
+Only the gateway talks to this. The mock has no order endpoint, so the gateway keeps orders itself
+(gateway/store.py; see ASSUMPTIONS.md).
 """
 from __future__ import annotations
 
@@ -11,7 +12,7 @@ from typing import Protocol
 import httpx
 from pydantic import BaseModel
 
-from app import config
+import settings as config
 
 
 class Money(BaseModel):

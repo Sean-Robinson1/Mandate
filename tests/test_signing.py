@@ -4,7 +4,7 @@ from enum import Enum
 
 import pytest
 
-from app.signing import (
+from protocol.signing import (
     Signer,
     canonical_bytes,
     sign_document,

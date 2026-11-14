@@ -20,7 +20,7 @@ from sqlalchemy import Integer, String, Text, select, update
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db import Base
-from app.signing import canonical_bytes
+from protocol.signing import canonical_bytes
 
 GENESIS_HASH = "0" * 64
 _HEAD_ID = 1

@@ -52,12 +52,12 @@
     </tbody>
   </table>
   </div>
-  <div class="keyline">
-    <span><span class="dot {{ 'ok' if it.valid else 'bad' }}"></span>Signature {{ "verified" if it.valid else "INVALID" }}</span>
-    <span class="mono muted">{{ m.mandate_id }}</span>
-    <span class="muted">Agent</span><span class="mono">{{ m.agent_id }}</span>
-    <span class="muted">Ed25519 key</span><span class="mono">{{ it.public_key }}</span>
-  </div>
+  <dl class="keys">
+    <div><dt>Signed by</dt><dd><span class="dot {{ 'ok' if it.valid else 'bad' }}"></span>{{ m.buyer_org }} · signature {{ "verified" if it.valid else "INVALID" }}<span class="mono sub">{{ m.signer_key_id }}</span></dd></div>
+    <div><dt>Agent</dt><dd>Orders signed with this key only<span class="mono sub">{{ m.agent_id }} · {{ m.agent_public_key }}</span></dd></div>
+    <div><dt>Approver</dt><dd>{{ m.approver_name }} · approvals signed with this key<span class="mono sub">{{ m.approver_public_key }}</span></dd></div>
+    <div><dt>Valio Aimo</dt><dd>Checks the signature, the agent's key, the approver's key and the hard limits before accepting any order</dd></div>
+  </dl>
 </section>
 {% endfor %}
 {% endblock %}
