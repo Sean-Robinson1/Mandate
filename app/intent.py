@@ -29,7 +29,8 @@ PRODUCT_TYPES: dict[str, dict] = {
     "cream": {"terms": ["cream"], "aliases": ["cream", "kerma"], "category": "104",
               "exclude": ["ice cream", "sour", "cheese", "soup"]},
     "butter": {"terms": ["butter"], "aliases": ["butter", "voi"], "category": None,
-               "exclude": ["peanut", "cookie", "biscuit", "croissant"]},
+               "exclude": ["peanut", "cookie", "biscuit", "croissant", "butternut", "squash", "pumpkin", "bean",
+                           "chicken", "sauce"]},
     "oat drink": {"terms": ["oat", "drink"], "aliases": ["oat drink", "oat milk", "kaurajuoma"],
                   "category": None, "exclude": []},
 }

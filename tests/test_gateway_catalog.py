@@ -36,3 +36,9 @@ def test_matches_beyond_the_limit_are_counted_not_hidden():
     index = [product(str(i), f"Milk {i}") for i in range(catalog.MAX_RESULTS + 5)]
     result = catalog.search(["milk"], index=index)
     assert len(result.products) == catalog.MAX_RESULTS and result.not_returned == 5
+
+
+def test_butter_request_excludes_butternut_squash():
+    from app.intent import PRODUCT_TYPES
+    index = [product("1", "Butter 500g"), product("2", "PUMPKIN BUTTERNUTSQUASH ZA"), product("3", "Butter beans 2kg")]
+    assert ids(catalog.search(["butter"], exclude=PRODUCT_TYPES["butter"]["exclude"], index=index)) == ["1"]
