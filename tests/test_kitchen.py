@@ -270,3 +270,13 @@ def test_usual_week_matches_the_kitchen_item_by_words_and_unit(sheet_db):
         assert kitchen.usual_week(s, "school", ["milk"], "L")[1] == 90 * 5          # closed at weekends
         assert kitchen.usual_week(s, "hotel", ["butter"], "L") is None              # different unit
         assert kitchen.usual_week(s, "hotel", ["caviar"], "KG") is None
+
+
+def test_a_typed_request_is_linked_to_the_kitchen_item_and_shows_as_arriving(sheet_db):
+    text = "I need 1,000 litres of lactose-free milk by Monday."
+    with sheet_db.buyer_db() as s:
+        result = agent.run(text, sheet_db.mandates["hotel"], s, sheet_db.client, now=NOW)
+        assert result.status == "ORDERED"
+        assert s.get(Run, result.trace_id).supply_id == supply(sheet_db, "Lactose-free milk").id
+        upcoming, _ = kitchen.deliveries(s, "hotel")
+    assert [i.via for i in upcoming] == ["agent"] and upcoming[0].supply.name == "Lactose-free milk"

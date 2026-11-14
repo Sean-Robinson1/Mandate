@@ -365,6 +365,29 @@ def to_order(rows: list[Row]) -> list[SupplierGroup]:
     return sorted(groups.values(), key=lambda g: (not g.agent, min(r.order_by_day or 0 for r in g.rows)))
 
 
+def link_typed_requests(session: Session, org_of: dict[str, str]) -> int:
+    """Typed requests from before they were linked to an item: link them now, so their deliveries show and count."""
+    linked = 0
+    for row in session.scalars(select(Run).where(Run.supply_id.is_(None), Run.intent_json != "")):
+        org = org_of.get(row.mandate_id)
+        if org is None:
+            continue
+        intent = json.loads(row.intent_json)
+        item = match_supply(session, org, intent.get("product_terms", []), str(intent.get("unit", "")))
+        if item is not None:
+            row.supply_id = item.id
+            linked += 1
+    session.commit()
+    return linked
+
+
+def unlinked_orders(session: Session, mandate_id: str) -> list[tuple[Run, Order]]:
+    """Agent orders on the way for things the kitchen does not track as stock items."""
+    return list(session.execute(select(Run, Order).join(Order, Order.trace_id == Run.trace_id)
+                                .where(Run.mandate_id == mandate_id, Run.supply_id.is_(None),
+                                       Order.status == "PLACED")).all())
+
+
 def deliveries(session: Session, org_key: str, days_back: int = 7) -> tuple[list[Incoming], list[Incoming]]:
     """What is on the way (soonest first) and what arrived in the last week (latest first)."""
     supplies = session.scalars(select(Supply).where(Supply.org_key == org_key)).all()
@@ -443,16 +466,22 @@ def restock_text(supply: Supply, quantity: float, on: date | None = None) -> str
     return f"Restock {quantity:,g} {UNIT_WORDS.get(supply.unit, supply.unit)} of {supply.ask_as} by {by:%A}"
 
 
+def match_supply(session: Session, org_key: str, terms: list[str], unit: str) -> Supply | None:
+    """The kitchen item a typed request is for: every product word in its name or product term, same unit."""
+    words = [t.lower() for t in terms]
+    if not words:
+        return None
+    return next((s for s in session.scalars(select(Supply).where(Supply.org_key == org_key).order_by(Supply.position))
+                 if s.unit == unit and all(w in f"{s.ask_as} {s.name}".lower() for w in words)), None)
+
+
 def usual_week(session: Session, org_key: str, terms: list[str], unit: str,
                supply_id: int | None = None) -> tuple[str, float] | None:
     """The kitchen's usual weekly use of the item a request is for: its own row if known, else the item whose
     product words match the request (same unit). None if the kitchen does not stock it."""
-    supplies = session.scalars(select(Supply).where(Supply.org_key == org_key)).all()
-    match = next((s for s in supplies if s.id == supply_id), None)
-    if match is None:
-        words = [t.lower() for t in terms]
-        match = next((s for s in supplies if s.unit == unit and words
-                      and all(w in f"{s.ask_as} {s.name}".lower() for w in words)), None)
+    match = session.get(Supply, supply_id) if supply_id else None
+    if match is None or match.org_key != org_key:
+        match = match_supply(session, org_key, terms, unit)
     if match is None or match.unit != unit or match.daily_use <= 0:
         return None
     week = sum(WEEK.get(org_key, FLAT)) * match.daily_use

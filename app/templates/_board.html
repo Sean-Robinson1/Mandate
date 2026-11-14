@@ -81,7 +81,14 @@
         {% endif %}
       </div>
       {% else %}
-      <p class="empty-note">Nothing on order.</p>
+      {% if not other_orders %}<p class="empty-note">Nothing on order.</p>{% endif %}
+      {% endfor %}
+      {% for run, o in other_orders %}
+      <div class="arrival">
+        <span class="a-day">{{ o.delivery_date|day if o.delivery_date else "Soon" }}</span>
+        <div class="line-main"><a href="/requests/{{ run.trace_id }}">{{ run.request_text|truncate(48) }}</a>
+          <span class="sub">Valio Aimo · ordered by the agent · {{ o.total_net|eur0 }} · not a tracked stock item</span></div>
+      </div>
       {% endfor %}
       {% if later %}<p class="small muted">{{ later|length }} more later</p>{% endif %}
     </section>

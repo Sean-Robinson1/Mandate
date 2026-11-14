@@ -44,6 +44,7 @@ GATEWAY = GatewayClient()
 _restock_lock = threading.Lock()          # one restock check at a time, so a low row starts one order, not two
 with SessionLocal() as _s:
     kitchen.seed(_s)
+    kitchen.link_typed_requests(_s, agent.ORG_OF)
 
 
 def _publish_mandates() -> None:
@@ -360,6 +361,7 @@ def _dashboard(me) -> dict:
         upcoming, _ = kitchen.deliveries(s, me.org_key)
         counted = _count_label(kitchen.last_count(s, me.org_key), start)
         first = kitchen.use_first(s, me.org_key)
+        other = kitchen.unlinked_orders(s, mandate.mandate_id)
     groups = kitchen.to_order(rows)
     with SessionLocal() as s:
         waiting = s.scalars(select(Run).where(Run.mandate_id == mandate.mandate_id, Run.status == "NEEDS_HUMAN")
@@ -367,7 +369,7 @@ def _dashboard(me) -> dict:
     areas =[(key, label, [r for r in rows if r.supply.storage == key]) for key, label in kitchen.AREAS.items()]
     return {"rows": rows, "day": day, "today": kitchen.date_of(start, day), "groups": groups,
             "upcoming": [i for i in upcoming if i.day <= day + 7], "later": [i for i in upcoming if i.day > day + 7],
-            "use_first": first, "areas": [a for a in areas if a[2]], "counted": counted,
+            "use_first": first, "other_orders": other, "areas": [a for a in areas if a[2]], "counted": counted,
             "headline": _headline(groups, upcoming, approver), "approver": approver,
             "stock_value": sum(r.value for r in rows), "on_order_value": sum(i.value for i in upcoming),
             "manager": is_manager(me), "busy": any(r.tone == "busy" for r in rows),

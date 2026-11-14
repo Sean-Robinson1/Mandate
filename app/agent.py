@@ -380,6 +380,9 @@ def run(text: str, mandate: Mandate, session: Session, gateway: GatewayClient, l
         return RunResult(trace_id=trace_id, status="NEEDS_CLARIFICATION", receipt=f"I need to ask: {e}")
     trail.log("intent.parsed", intent.model_dump(mode="json"))
     row.intent_json = intent.model_dump_json()
+    if row.supply_id is None and mandate.mandate_id in ORG_OF:      # a typed request: link it to the kitchen's item
+        item = kitchen.match_supply(session, ORG_OF[mandate.mandate_id], intent.product_terms, intent.unit.value)
+        row.supply_id = item.id if item else None
     steps.agent("Understood the request", describe_intent(intent),
                 "warn" if intent.confidence < mandate.bands.min_intent_confidence else "")
 
