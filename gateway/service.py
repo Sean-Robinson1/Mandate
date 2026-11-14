@@ -26,7 +26,7 @@ from sqlalchemy.orm import sessionmaker
 import settings as config
 from gateway import catalog
 from gateway.backend import ValioAPI
-from gateway.store import MandateRecord, OfferRecord, OrderRecord
+from gateway.store import MandateRecord, OfferRecord, OrderRecord, PausedAgent
 from protocol.mandate import Mandate
 from protocol.registry import TrustRegistry
 from protocol.signing import Signer, sign_document, verify_document
@@ -47,7 +47,7 @@ from protocol.wire import (
 )
 
 UNLIMITED = 999_999          # Terminal products report this; some Stock products report 9999999999
-IDENTITY_CHECKS = {"mandate.signature", "mandate.validity", "mandate.current", "order.signature"}
+IDENTITY_CHECKS = {"mandate.signature", "mandate.validity", "mandate.current", "order.signature", "agent.active"}
 
 
 @dataclass
@@ -154,6 +154,14 @@ class Gateway:
               "The order is not signed by the agent the mandate names")
         if any(not c.ok for c in checks):
             return refused(next(c.message for c in checks if not c.ok))
+        # Only now is it certain which agent is asking, so only now can a pause be applied to it.
+        with self.sessions() as s:
+            paused = s.get(PausedAgent, mandate.agent_id)
+        if not check("agent.active", paused is None,
+                     f"Agent {mandate.agent_id} is active" if paused is None else
+                     f"Valio Aimo paused this agent on {paused.paused_at[:16].replace('T', ' at ')}"
+                     + (f": {paused.note}" if paused.note else "") + ". No orders are accepted until it is resumed"):
+            return refused(checks[-1].message)
 
         with self.sessions() as s:
             # A resend of an order we already confirmed (its answer was lost on the way): same signed answer again.
@@ -347,6 +355,44 @@ class Gateway:
             OrderRecord.mandate_id == mandate_id, OrderRecord.status != "CANCELLED",
             OrderRecord.confirmed_at >= monday))
         return round(float(total), 2)
+
+    # ------------------------------------------------------------ pausing agents (Valio Aimo's operators)
+
+    def agents(self) -> list[dict]:
+        """Every agent Valio Aimo has seen a mandate for, with its orders and whether it is paused."""
+        with self.sessions() as s:
+            paused = {p.agent_id: p for p in s.scalars(select(PausedAgent))}
+            out = []
+            for m in s.scalars(select(MandateRecord).order_by(MandateRecord.buyer_org)):
+                agent_id = json.loads(m.mandate_json).get("agent_id", "")
+                orders = s.execute(select(func.count(), func.max(OrderRecord.confirmed_at)).where(
+                    OrderRecord.mandate_id == m.mandate_id)).one()
+                p = paused.get(agent_id)
+                out.append({"agent_id": agent_id, "buyer_org": m.buyer_org, "mandate_id": m.mandate_id,
+                            "mandate_version": m.version, "orders": orders[0], "last_order": orders[1],
+                            "paused": p is not None, "paused_at": p.paused_at if p else None,
+                            "paused_by": p.paused_by if p else None, "note": p.note if p else ""})
+            return out
+
+    def pause(self, agent_id: str, by: str, note: str = "") -> Result:
+        with self.sessions() as s:
+            known = next((a for a in self.agents() if a["agent_id"] == agent_id), None)
+            if known is None:
+                return Result(404, {"error": f"no agent {agent_id} has a mandate here"})
+            if s.get(PausedAgent, agent_id) is None:
+                s.add(PausedAgent(agent_id=agent_id, buyer_org=known["buyer_org"],
+                                  paused_at=self.clock().isoformat(timespec="seconds"), paused_by=by[:80],
+                                  note=note.strip()[:300]))
+                s.commit()
+        return Result(200, {"agent_id": agent_id, "status": "paused"})
+
+    def resume(self, agent_id: str) -> Result:
+        with self.sessions() as s:
+            p = s.get(PausedAgent, agent_id)
+            if p is not None:
+                s.delete(p)
+                s.commit()
+        return Result(200, {"agent_id": agent_id, "status": "active"})
 
     # ------------------------------------------------------------ order status
 

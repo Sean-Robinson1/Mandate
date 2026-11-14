@@ -9,6 +9,8 @@ import sys
 import time
 import urllib.request
 
+import settings
+
 SERVICES = [
     ("Valio Aimo gateway", ["gateway.api:create_app", "--factory", "--port", "8100"], "http://127.0.0.1:8100/docs"),
     ("Buyer console", ["app.web:app", "--port", "8000"], "http://127.0.0.1:8000"),
@@ -32,6 +34,8 @@ def main() -> int:
         for name, args, url in SERVICES:
             procs.append(subprocess.Popen([sys.executable, "-m", "uvicorn", *args, "--log-level", "warning"]))
             print(f"{name:20} {url}  {'up' if wait_until_up(url) else 'NOT RESPONDING'}", flush=True)
+        if settings.OPERATOR_TOKEN:
+            print(f"{'Valio Aimo operators':20} http://127.0.0.1:8100/operator?token={settings.OPERATOR_TOKEN}", flush=True)
         print("Ctrl+C to stop.", flush=True)
         while all(p.poll() is None for p in procs):
             time.sleep(0.5)

@@ -156,3 +156,18 @@ def test_product_page_shows_catalog_facts_and_rejects_odd_ids(world):
     assert status == 200 and body["product_id"] == "100001" and "description" in body
     assert world.client._call("GET", "/v1/products/nope")[0] == 404
     assert world.client._call("GET", "/v1/products/a%20b")[0] == 422
+
+
+def test_a_paused_agent_is_refused_until_resumed(world, monkeypatch):
+    import settings
+    monkeypatch.setattr(settings, "OPERATOR_TOKEN", "op-secret")
+    agent = world.mandates["hotel"].agent_id
+    assert place(world, offer_for(world), 10)[0] == 201                     # registers the mandate
+    http = world.client.http
+    assert http.post("/v1/agents/pause", data={"agent_id": agent}).status_code == 401
+    assert http.post("/v1/agents/pause", data={"agent_id": agent, "note": "odd orders"},
+                     headers={"X-Operator-Token": "op-secret"}).status_code == 200
+    status, body = place(world, offer_for(world), 10, reference="after pause")
+    assert status == 403 and failed(body) == ["agent.active"] and "odd orders" in body["error"]
+    http.post("/v1/agents/resume", data={"agent_id": agent}, headers={"X-Operator-Token": "op-secret"})
+    assert place(world, offer_for(world), 10, reference="after resume")[0] == 201

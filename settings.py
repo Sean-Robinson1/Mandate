@@ -15,6 +15,8 @@ KEYS_DIR = Path(os.getenv("KEYS_DIR") or ROOT / "keys")    # keys/buyer, keys/ga
 VALIO_API_BASE_URL = os.getenv("VALIO_API_BASE_URL") or "https://junction26.valioaimo.fi"
 VALIO_API_KEY = os.getenv("VALIO_API_KEY", "")
 GATEWAY_DATABASE_URL = os.getenv("GATEWAY_DATABASE_URL") or f"sqlite:///{ROOT / 'gateway.db'}"
+# Valio Aimo's operators use this to open /operator on the gateway (pause an agent). Unset = the page is off.
+OPERATOR_TOKEN = os.getenv("OPERATOR_TOKEN", "")
 CATALOG_INDEX = Path(os.getenv("CATALOG_INDEX") or ROOT / "data" / "catalog_index.json")
 
 # ---- buyer's purchasing agent and console

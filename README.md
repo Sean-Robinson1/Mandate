@@ -29,6 +29,9 @@ deliveries on the way. Open an item for its stock chart and forecast, its levels
 elsewhere. Counts can be typed in, imported from any kitchen system's CSV export, or pushed to
 `POST /api/stock-counts` (set `STOCK_API_TOKEN` in `.env`).
 
+Valio Aimo can pause any customer's agent on its operator page (`http://127.0.0.1:8100/operator?token=…`,
+set `OPERATOR_TOKEN` in `.env`; `scripts.dev` prints the link). The paused agent's next order is refused with the reason.
+
 Automatic reordering is an add-on per item, for suppliers with an ordering gateway (Valio Aimo). Press
 **Next day** to use a day of stock: when such an item drops below its reorder level the agent restocks it by itself
 ("Agent asks first" items go to the purchasing manager). The agent panel on the right shows what it is doing; click

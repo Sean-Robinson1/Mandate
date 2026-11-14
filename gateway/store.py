@@ -50,6 +50,18 @@ class MandateRecord(Base):
     mandate_json: Mapped[str] = mapped_column(Text)
 
 
+class PausedAgent(Base):
+    """An agent Valio Aimo has stopped. Its orders are refused until it is resumed (the row is deleted)."""
+
+    __tablename__ = "paused_agents"
+
+    agent_id: Mapped[str] = mapped_column(String(120), primary_key=True)
+    buyer_org: Mapped[str] = mapped_column(String(200))
+    paused_at: Mapped[str] = mapped_column(String(40))
+    paused_by: Mapped[str] = mapped_column(String(80))
+    note: Mapped[str] = mapped_column(String(300), default="")
+
+
 def make_sessionmaker(url: str | None = None):
     url = url or config.GATEWAY_DATABASE_URL
     connect_args = {"timeout": 30, "check_same_thread": False} if url.startswith("sqlite") else {}
