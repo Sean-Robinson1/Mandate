@@ -3,7 +3,7 @@
 Timestamps on runs, steps and orders are ISO-8601 in Helsinki time (the buyer's business clock, used for weekly
 spend). Audit events are stamped in UTC.
 """
-from sqlalchemy import Float, Integer, String, Text, create_engine, inspect, text
+from sqlalchemy import Boolean, Float, Integer, String, Text, create_engine, inspect, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 import settings as config
@@ -89,6 +89,25 @@ class Delivery(Base):
     status: Mapped[str] = mapped_column(String(12), default="EXPECTED")   # EXPECTED | RECEIVED
     reference: Mapped[str] = mapped_column(String(80), default="")
     created_by: Mapped[str] = mapped_column(String(80), default="")
+
+
+class PriceRecord(Base):
+    """A supplier's price for one product that can fill a stock item, seen on one kitchen day.
+
+    `in_use` marks the product the kitchen buys; other rows are alternatives Valio Aimo offered for the same item.
+    `source` says where the price came from: "valio" (a signed offer) or "history" (simulated past, see ASSUMPTIONS.md).
+    """
+
+    __tablename__ = "price_records"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    supply_id: Mapped[int] = mapped_column(Integer, index=True)
+    day: Mapped[int] = mapped_column(Integer, index=True)
+    product_id: Mapped[str] = mapped_column(String(40), default="")
+    product_name: Mapped[str] = mapped_column(String(200), default="")
+    unit_price: Mapped[float] = mapped_column(Float)                     # € per stock unit (L, KG, PCS), before VAT
+    in_use: Mapped[bool] = mapped_column(Boolean, default=False)
+    source: Mapped[str] = mapped_column(String(20), default="history")
 
 
 class SimState(Base):

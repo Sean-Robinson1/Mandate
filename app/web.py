@@ -23,7 +23,7 @@ from sqlalchemy import func, select
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 import settings as config
-from app import agent, charts, keys, kitchen, policy, rules
+from app import agent, charts, keys, kitchen, policy, prices, rules
 from app.audit import AuditEvent, append_event, event_to_dict, events_for_trace, lock_chain, verify_chain
 from app.db import Order, Run, SessionLocal, Step, init_db, wipe
 from app.gateway_client import GatewayClient, GatewayError
@@ -767,6 +767,35 @@ def retry(request: Request, trace_id: str):
     threading.Thread(target=_work, args=(new_id, row.request_text, mandate, kitchen.review_reason(supply)),
                      daemon=True).start()
     return RedirectResponse(f"/requests/{new_id}", status_code=303)
+
+
+# ---------------------------------------------------------------- ingredient prices
+
+@app.get("/prices", include_in_schema=False)
+def prices_page(request: Request):
+    me = current_person(request)
+    with SessionLocal() as s:
+        data = prices.overview(s, me.org_key)
+    return page(request, "prices.html", data=data, approver=agent.approver_name(MANDATES[me.org_key]), active="prices")
+
+
+@app.post("/prices/switch", include_in_schema=False)
+def prices_switch(request: Request, supply_id: int = Form(...), alt_product_id: str = Form(...)):
+    """Hand a cheaper equivalent to the agent: it orders through the same mandate checks and approvals as any request."""
+    me = current_person(request)
+    mandate = MANDATES[me.org_key]
+    with SessionLocal() as s:
+        data = prices.overview(s, me.org_key)
+        item = next((c for c in data["cheaper"]
+                     if c["supply_id"] == supply_id and c["alt_product_id"] == alt_product_id), None)
+        if item is None:
+            raise HTTPException(404, "that saving is no longer on offer")
+        if not item["orderable"]:
+            raise HTTPException(409, f"the agent cannot order {item['supply'].lower()}; order it from the supplier")
+        text = prices.switch_request_text(item, date.fromisoformat(data["date"]))[:1000]
+        trace_id = agent.open_run(s, text, mandate, requested_by=me.id, supply_id=supply_id)
+    threading.Thread(target=_work, args=(trace_id, text, mandate), daemon=True).start()
+    return RedirectResponse(f"/requests/{trace_id}", status_code=303)
 
 
 @app.get("/products/{product_id}", include_in_schema=False)

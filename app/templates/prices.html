@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+{% block title %}Ingredient prices · Trusted Trade{% endblock %}
+
+{% macro trend_spark(points, label) -%}
+{%- if points and points|length > 1 -%}
+{%- set w, h, pad = 96, 26, 3 -%}
+{%- set values = points|map(attribute=1)|list -%}
+{%- set lo, hi = values|min, values|max -%}
+{%- set span = (hi - lo) if hi > lo else 1 -%}
+{%- set first = points[0][0] -%}
+{%- set width = (points[-1][0] - first) or 1 -%}
+{%- set ns = namespace(pts=[]) -%}
+{%- for d, v in points -%}
+  {%- set x = pad + (d - first) / width * (w - 2 * pad) -%}
+  {%- set y = h - pad - ((v - lo) / span) * (h - 2 * pad) if hi > lo else h / 2 -%}
+  {%- set ns.pts = ns.pts + [(x|round(1), y|round(1))] -%}
+{%- endfor -%}
+<svg class="spark" viewBox="0 0 {{ w }} {{ h }}" width="{{ w }}" height="{{ h }}" role="img" aria-label="{{ label }}">
+  <polyline points="{% for x, y in ns.pts %}{{ x }},{{ y }} {% endfor %}" class="spark-line"/>
+  <circle cx="{{ ns.pts[-1][0] }}" cy="{{ ns.pts[-1][1] }}" r="2.5" class="spark-end"/>
+</svg>
+{%- else %}<span class="muted">–</span>{% endif %}
+{%- endmacro %}
+
+{% macro per_unit(value, unit) %}{{ value|eur }}<span class="unit"> / {{ unit|lower }}</span>{% endmacro %}
+
+{% block content %}
+{% set s = data.summary %}
+<div class="eyebrow">{{ my_org.buyer_org }} · {{ me.name }}, {{ me.role|lower }}</div>
+<div class="page-head"><h1>Ingredient prices</h1></div>
+<p class="lede">What each ingredient costs now, what has changed in the last two weeks, and where the same thing is
+  cheaper from Valio Aimo.</p>
+
+<div class="kpis prices-kpis" aria-label="Summary">
+  <div class="tile"><div class="tile-label">Spend this week</div><div class="tile-value">{{ s.spend_week|eur }}</div>
+    <div class="tile-sub">At current prices and usual use, before VAT</div></div>
+  <div class="tile {{ 'warn' if s.rising }}"><div class="tile-label">Prices rising</div><div class="tile-value">{{ s.rising }}</div>
+    <div class="tile-sub">{{ "Up 3% or more in two weeks" if s.rising else "Nothing up 3% or more in two weeks" }}</div></div>
+  <div class="tile"><div class="tile-label">Saving available</div><div class="tile-value">{{ s.saving_week|eur }}</div>
+    <div class="tile-sub">Per week, by switching to cheaper equivalents</div></div>
+  <div class="tile"><div class="tile-label">Prices from signed Valio Aimo offers</div>
+    <div class="tile-value">{{ s.live_prices }}<span class="unit"> of {{ s.items }}</span></div>
+    <div class="tile-sub">The rest are simulated history or the item's unit cost</div></div>
+</div>
+
+<section aria-labelledby="changes-h">
+  <div class="section-head"><h2 id="changes-h">Price changes</h2><span class="muted">Last 14 days, 3% or more</span></div>
+  {% if data.alerts %}
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>Ingredient</th><th>Product</th><th class="num">Was</th><th class="num">Now</th><th class="num">Change</th>
+      <th class="num">Since</th><th class="num">Per week</th></tr></thead>
+    <tbody>
+    {% for a in data.alerts %}
+      <tr>
+        <td><a class="item-link" href="/supplies/{{ a.supply_id }}">{{ a.supply }}</a></td>
+        <td class="small">{{ a.product }}</td>
+        <td class="num">{{ per_unit(a.old_price, a.unit) }}</td>
+        <td class="num">{{ per_unit(a.new_price, a.unit) }}</td>
+        <td class="num"><span class="status {{ 'bad' if a.rising else 'ok' }}"><span class="dot"></span>{{ "+" if a.rising }}{{ "%.1f"|format(a.change_pct) }}%</span></td>
+        <td class="num small">Day {{ a.since_day }}</td>
+        <td class="num {{ 'bad-text' if a.rising else 'delivered' }}">{{ "+" if a.weekly_effect > 0 else "−" if a.weekly_effect < 0 }}{{ (a.weekly_effect|abs)|eur }}
+          <span class="sub">on {{ a.use_week|qty }} {{ a.unit|lower }} a week</span></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">No ingredient has moved 3% or more in the last two weeks.</p>
+  {% endif %}
+</section>
+
+<section aria-labelledby="cheaper-h">
+  <div class="section-head"><h2 id="cheaper-h">Cheaper equivalents</h2><span class="muted">Same item, lower price per litre or kg</span></div>
+  {% if data.cheaper %}
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>Ingredient</th><th>You buy now</th><th>Cheaper option</th><th class="num">Saving per week</th><th></th></tr></thead>
+    <tbody>
+    {% for c in data.cheaper %}
+      <tr>
+        <td><a class="item-link" href="/supplies/{{ c.supply_id }}">{{ c.supply }}</a>
+          <span class="sub">{{ c.use_week|qty }} {{ c.unit|lower }} a week</span></td>
+        <td class="small">{{ c.current_product }}<span class="sub">{{ per_unit(c.current_price, c.unit) }}</span></td>
+        <td class="small">{% if c.alt_product_id %}<a href="/products/{{ c.alt_product_id }}">{{ c.alt_product }}</a>{% else %}{{ c.alt_product }}{% endif %}
+          <span class="sub">{{ per_unit(c.alt_price, c.unit) }}</span></td>
+        <td class="num delivered">{{ c.saving_week|eur }}</td>
+        <td>
+          {% if c.orderable %}
+          <form method="post" action="/prices/switch" class="switch-form">
+            <input type="hidden" name="supply_id" value="{{ c.supply_id }}">
+            <input type="hidden" name="alt_product_id" value="{{ c.alt_product_id }}">
+            <button class="btn secondary small-btn" type="submit">Order the cheaper one</button>
+          </form>
+          {% else %}
+          <span class="small muted">Order from the supplier</span>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <p class="small muted sheet-note">Ordering the cheaper one hands it to the purchasing agent: it gets a signed offer from
+    Valio Aimo and checks it against the purchasing rules{% if approver %}, asking {{ approver }} where they say so{% endif %}.</p>
+  {% else %}
+  <p class="empty">No cheaper equivalent has been offered for what you buy. Alternatives appear here as Valio Aimo offers them.</p>
+  {% endif %}
+</section>
+
+<section aria-labelledby="all-h">
+  <div class="section-head"><h2 id="all-h">All prices</h2><span class="muted">Day {{ data.day }} · most spend first</span></div>
+  {% if data["items"] %}
+  <div class="table-scroll">
+  <table class="prices-all">
+    <thead><tr><th>Ingredient</th><th>Supplier</th><th>Product</th><th class="num">Price</th><th class="num">Use per week</th>
+      <th class="num">Spend per week</th><th>Share</th><th>Last four weeks</th><th>Price from</th></tr></thead>
+    <tbody>
+    {% for i in data["items"] %}
+      <tr>
+        <td><a class="item-link" href="/supplies/{{ i.supply_id }}">{{ i.supply }}</a></td>
+        <td class="small">{{ i.supplier }}</td>
+        <td class="small">{{ i.product }}</td>
+        <td class="num">{{ per_unit(i.unit_price, i.unit) }}</td>
+        <td class="num">{{ i.use_week|qty }} {{ i.unit|lower }}</td>
+        <td class="num">{{ i.spend_week|eur }}</td>
+        <td><span class="share" role="img" aria-label="{{ '%.0f'|format(i.share_pct) }}% of spend"><span style="width: {{ [i.share_pct, 100]|min }}%"></span></span>
+          <span class="small muted">{{ "%.0f"|format(i.share_pct) }}%</span></td>
+        <td>{{ trend_spark(i.trend, i.supply ~ " price over the last four weeks") }}</td>
+        <td><span class="price-source {{ i.source|replace(' ', '-') }}">{{ {"valio": "Valio Aimo offer", "history": "Simulated history"}.get(i.source, "Unit cost") }}</span></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">No stock items yet. Add items on the supplies page and their prices appear here.</p>
+  {% endif %}
+</section>
+{% endblock %}
+{% block script %}
+<script>
+  document.querySelectorAll(".switch-form").forEach(f => f.addEventListener("submit", () => {
+    const b = f.querySelector("button"); b.disabled = true; b.textContent = "Sending to the agent…";
+  }));
+</script>
+{% endblock %}

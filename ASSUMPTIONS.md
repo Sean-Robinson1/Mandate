@@ -106,3 +106,16 @@ Each entry: what we assumed, why, and what would replace it in production.
     never causes a second order. Production: a durable outbox and Valio Aimo's order API with idempotency keys.
 22. **Product pages show Valio Aimo's catalog facts through its gateway.** We could not confirm the webshop's
     product link format, so the "Open in Valio Aimo's webshop" link appears only when `VALIO_SHOP_URL` is set.
+
+## Ingredient prices
+
+27. **Ingredient prices are recorded, not looked up.** Valio Aimo's API gives today's price only, so every signed
+    offer the agent receives is kept per stock item, product and day. Before that, each item gets four weeks of
+    simulated prices at its unit cost with small drift, plus a few deliberate moves (cream, butter, salmon fillet,
+    grated cheese) and one or two real catalog products as alternatives, so the page has something to show.
+28. **A price change compares like with like:** the same product from the same source. Switching products, or the
+    first real Valio Aimo price arriving after simulated history, is not shown as a price change. Moves under 3%
+    within 14 days are treated as noise. The € per week effect uses the item's typical week of use.
+29. **A cheaper equivalent** is another product Valio Aimo offered for the same stock item, priced per the same
+    unit, within the last 14 days, and from the same source as the current price. Ordering it goes through the
+    agent and the purchasing rules like any request. Recipe and dish impact follows once the menu lands.

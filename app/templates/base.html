@@ -14,6 +14,7 @@
     <div class="brand-sub">{{ my_org.buyer_org }}</div>
     <nav class="nav" aria-label="Main">
       <a href="/" {% if active == "supplies" %}aria-current="page"{% endif %}>Supplies</a>
+      <a href="/prices" {% if active == "prices" %}aria-current="page"{% endif %}>Prices</a>
       <a href="/approvals" {% if active == "approvals" %}aria-current="page"{% endif %}>Approvals
         {% if pending %}<span class="count">{{ pending }}</span>{% endif %}</a>
       <a href="/activity" {% if active == "activity" %}aria-current="page"{% endif %}>Activity</a>
