@@ -19,8 +19,8 @@
           Files need an <code>item</code> and an <code>on hand</code> column.</div>
       </div>
     </details>
-    <form method="post" action="/kitchen/next-day">
-      <button class="btn secondary" title="Demo: use a day of stock and let the agent react">Next day</button>
+    <form method="post" action="/kitchen/next-day" id="day-form">
+      <button class="btn secondary" id="day-btn" title="Demo: use a day of stock and let the agent react">Next day</button>
     </form>
     <details class="menu">
       <summary class="btn secondary" title="Demo: start the simulation again">Reset demo</summary>
@@ -91,16 +91,29 @@
     if (btn) { btn.disabled = true; }
   });
 
+  let busy = {{ "true" if busy else "false" }}, timer = null;
   async function refresh() {
     if (counting() || board.querySelector("details[open]") || board.contains(document.activeElement) && document.activeElement.matches("input, button")) return;
     try {
       const data = await (await fetch("/supplies/sheet", {cache: "no-store"})).json();
       board.innerHTML = data.board;
       headline.textContent = data.headline;
+      busy = data.busy;
       showArea(area);
       hideDismissed();
     } catch (e) { /* try again on the next tick */ }
   }
-  setInterval(refresh, 3000);
+  // Poll quickly while the agent is working, slowly otherwise, and not at all in a hidden tab.
+  function schedule() {
+    clearTimeout(timer);
+    if (document.hidden) return;
+    timer = setTimeout(async () => { await refresh(); schedule(); }, busy ? 1500 : 8000);
+  }
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh().then(schedule); else clearTimeout(timer); });
+  schedule();
+  document.getElementById("day-form").addEventListener("submit", () => {
+    const btn = document.getElementById("day-btn"); btn.disabled = true; btn.textContent = "Next day…";
+  });
+  if (location.search) history.replaceState(null, "", "/");   // a reload should not repeat the notice
 </script>
 {% endblock %}

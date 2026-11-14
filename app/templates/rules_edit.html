@@ -12,16 +12,20 @@
 
 <form method="post" action="/rules/{{ key }}/preview" class="rules-form">
   {% for f in fields %}
-  <div class="rule-field">
-    <label for="{{ f.path }}">{{ f.label }}</label>
-    {% if f.kind == "allergens" %}
+  {% if f.kind == "allergens" %}
+  <fieldset class="rule-field">
+    <legend>{{ f.label }}</legend>
       <div class="checkgrid">
         {% for code, name in allergens.items() %}
         <label class="check"><input type="checkbox" name="{{ f.path }}.{{ code }}" value="1"
           {% if code in values[f.path] or values.get(f.path ~ "." ~ code) %}checked{% endif %}> {{ name|capitalize }}</label>
         {% endfor %}
       </div>
-    {% elif f.kind == "bool" %}
+  </fieldset>
+  {% else %}
+  <div class="rule-field">
+    <label for="{{ f.path }}">{{ f.label }}</label>
+    {% if f.kind == "bool" %}
       <label class="check"><input type="checkbox" id="{{ f.path }}" name="{{ f.path }}" value="1" {% if values[f.path] in (True, "1", "on") %}checked{% endif %}> Yes</label>
     {% elif f.kind == "date" %}
       <input type="date" id="{{ f.path }}" name="{{ f.path }}" value="{{ values[f.path] }}">
@@ -31,6 +35,7 @@
         {% if f.kind in ("pct", "share") %}<span class="unit">%</span>{% elif f.kind == "weeks" %}<span class="unit">weeks</span>{% endif %}</span>
     {% endif %}
   </div>
+  {% endif %}
   {% endfor %}
   <div class="actions"><button class="btn">Review the difference</button><a class="btn secondary" href="/rules">Cancel</a></div>
 </form>

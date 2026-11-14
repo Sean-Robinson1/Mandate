@@ -20,6 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 import settings as config
 from app import agent, charts, keys, kitchen, policy, rules
@@ -157,7 +158,7 @@ def when(iso: str | None, fmt: str = "%d %b %Y, %H:%M") -> str:
     dt = datetime.fromisoformat(iso)
     if dt.tzinfo:
         dt = dt.astimezone(config.HELSINKI)
-    return dt.strftime(fmt).lstrip("0")
+    return dt.strftime(fmt.replace("%d", str(dt.day))).lstrip("0")
 
 
 def day(iso: str | None) -> str:
@@ -199,13 +200,45 @@ def is_manager(person) -> bool:
     return person.id == MANDATES[person.org_key].approver
 
 
-def page(request: Request, name: str, **ctx):
+_chain_cache: dict = {"at": 0.0, "key": None, "result": None}
+CHAIN_CACHE_SECONDS = 10
+
+
+def cached_chain(s):
+    """The sidebar's chain check. Re-hashing the whole log on every page grows with the log, so the result is reused
+    for a few seconds while the log has not grown. The audit page always re-hashes from scratch."""
+    key = s.scalar(select(func.max(AuditEvent.seq)))
+    now = time.monotonic()
+    if _chain_cache["key"] != key or now - _chain_cache["at"] > CHAIN_CACHE_SECONDS:
+        _chain_cache.update(at=now, key=key, result=verify_chain(s))
+    return _chain_cache["result"]
+
+
+def my_mandate_id(me) -> str:
+    return MANDATES[me.org_key].mandate_id
+
+
+def page(request: Request, name: str, status_code: int = 200, fresh_chain: bool = False, **ctx):
     me = current_person(request)
     with SessionLocal() as s:
-        pending = s.scalar(select(func.count()).select_from(Run).where(Run.status == "NEEDS_HUMAN"))
-        chain = verify_chain(s)
+        pending = s.scalar(select(func.count()).select_from(Run)
+                           .where(Run.status == "NEEDS_HUMAN", Run.mandate_id == my_mandate_id(me)))
+        chain = verify_chain(s) if fresh_chain else cached_chain(s)
     return templates.TemplateResponse(request, name, {"pending": pending, "chain": chain, "me": me,
-                                                      "my_org": MANDATES[me.org_key], **ctx})
+                                                      "my_org": MANDATES[me.org_key], **ctx},
+                                      status_code=status_code)
+
+
+@app.exception_handler(StarletteHTTPException)
+async def http_error(request: Request, exc: StarletteHTTPException):
+    """Pages get a readable error page; the JSON endpoints the pages call keep their JSON."""
+    if "text/html" not in request.headers.get("accept", ""):
+        return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+    titles = {403: "Not allowed", 404: "Not found", 409: "Already changed"}
+    detail = str(exc.detail) if exc.detail else ""
+    return page(request, "error.html", status_code=exc.status_code,
+                title=titles.get(exc.status_code, "Something went wrong"),
+                detail=detail[:1].upper() + detail[1:])
 
 
 @app.post("/session", include_in_schema=False)
@@ -344,20 +377,27 @@ def _dashboard(me) -> dict:
 
 @app.get("/", include_in_schema=False)
 def home(request: Request, imported: int | None = None, unknown: str = "", invalid: str = "", error: str = "",
-         done: str = ""):
+         done: str = "", text: str = "", delivered: int | None = None, started: int | None = None):
     me = current_person(request)
+    if text:                                       # "ask again": the request box lives on Activity now
+        return RedirectResponse("/activity?" + urlencode({"text": text[:1000]}) + "#request-form", status_code=303)
     notice = None
     if error:
         notice = {"tone": "bad", "text": error}
     elif imported is not None:
-        text = f"Updated the stock count for {imported} item{'s' if imported != 1 else ''}."
+        msg = f"Updated the stock count for {imported} item{'s' if imported != 1 else ''}."
         if unknown:
-            text += f" Not recognised, so skipped: {unknown}."
+            msg += f" Not recognised, so skipped: {unknown}."
         if invalid:
-            text += f" Not a valid count: {invalid}."
-        notice = {"tone": "warn" if unknown or invalid else "ok", "text": text}
+            msg += f" Not a valid count: {invalid}."
+        notice = {"tone": "warn" if unknown or invalid else "ok", "text": msg}
     elif done:
         notice = {"tone": "ok", "text": done}
+    elif delivered is not None:
+        parts = [f"{delivered} delivery{'' if delivered == 1 else 'ies'} taken in" if delivered else None,
+                 f"the agent started {started} order{'' if started == 1 else 's'}" if started else None]
+        msg = "; ".join(p for p in parts if p)
+        notice = {"tone": "ok", "text": "A day passed" + (f": {msg}." if msg else ". Nothing needed ordering.")}
     return page(request, "home.html", active="supplies", notice=notice, **_dashboard(me))
 
 
@@ -556,13 +596,20 @@ def reset_demo(confirm: str = Form("")):
     return _back(done="The demo started again: day 1, fresh stock, no requests or orders. Purchasing rules are unchanged.")
 
 
+def _delivered_count(s, mandate_id: str) -> int:
+    return s.scalar(select(func.count()).select_from(Order).join(Run, Run.trace_id == Order.trace_id)
+                    .where(Order.status == "DELIVERED", Run.mandate_id == mandate_id)) or 0
+
+
 @app.post("/kitchen/next-day", include_in_schema=False)
-def next_day():
+def next_day(request: Request):
+    me = current_person(request)
     with SessionLocal() as s:
+        before = _delivered_count(s, my_mandate_id(me))
         kitchen.next_day(s)
-    for org_key in MANDATES:
-        start_restocks(org_key)
-    return RedirectResponse("/", status_code=303)
+        delivered = _delivered_count(s, my_mandate_id(me)) - before
+    started = {org_key: len(start_restocks(org_key)) for org_key in MANDATES}
+    return RedirectResponse(f"/?delivered={delivered}&started={started[me.org_key]}", status_code=303)
 
 
 def start_restocks(org_key: str) -> list[str]:
@@ -712,18 +759,24 @@ def product_page(request: Request, product_id: str):
 
 @app.get("/approvals", include_in_schema=False)
 def approvals(request: Request):
+    me = current_person(request)
     with SessionLocal() as s:
-        rows = s.scalars(select(Run).where(Run.status == "NEEDS_HUMAN").order_by(Run.created_at.desc())).all()
+        rows = s.scalars(select(Run).where(Run.status == "NEEDS_HUMAN", Run.mandate_id == my_mandate_id(me))
+                         .order_by(Run.created_at.desc())).all()
     reasons = {r.trace_id: [x["message"] for x in json.loads(r.policy_json)["reasons"]] for r in rows}
     approvers = {r.trace_id: MANDATE_BY_ID[r.mandate_id].approver_name for r in rows if r.mandate_id in MANDATE_BY_ID}
-    return page(request, "approvals.html", rows=rows, reasons=reasons, approvers=approvers, active="approvals")
+    return page(request, "approvals.html", rows=rows, reasons=reasons, approvers=approvers, active="approvals",
+                can_approve=is_manager(me))
 
 
 @app.get("/activity", include_in_schema=False)
 def activity(request: Request):
+    me = current_person(request)
     with SessionLocal() as s:
-        rows = s.scalars(select(Run).order_by(Run.created_at.desc()).limit(200)).all()
-    return page(request, "activity.html", rows=rows, examples=EXAMPLES, active="activity")
+        rows = s.scalars(select(Run).where(Run.mandate_id == my_mandate_id(me))
+                         .order_by(Run.created_at.desc()).limit(200)).all()
+    return page(request, "activity.html", rows=rows, examples=EXAMPLES, active="activity",
+                prefill=request.query_params.get("text", "")[:1000])
 
 
 @app.get("/mandates", include_in_schema=False)
@@ -746,8 +799,7 @@ def rules_page(request: Request, signed: int | None = None):
                   "valio_version": _held_by_valio_aimo(m.mandate_id), "suggestions": rules.suggestions(s, m),
                   "can_edit": me.id == m.approver}
                  for k, m in sorted(MANDATES.items(), key=lambda kv: kv[0] != me.org_key)]
-    return page(request, "mandates.html", items=items, signed=signed, active="rules", show=rules.show,
-                fields={f.path: f for f in rules.FIELDS})
+    return page(request, "mandates.html", items=items, signed=signed, active="rules")
 
 
 def _editable(request: Request, key: str):
@@ -821,7 +873,7 @@ def audit(request: Request):
                   s.scalars(select(AuditEvent).order_by(AuditEvent.seq.desc()).limit(300))]
     for e in events:
         e["label"] = EVENT_LABELS.get(e["event_type"], e["event_type"])
-    return page(request, "audit.html", events=events, active="audit")
+    return page(request, "audit.html", events=events, active="audit", fresh_chain=True)
 
 
 # ---------------------------------------------------------------- JSON

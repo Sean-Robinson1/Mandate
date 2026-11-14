@@ -1,11 +1,11 @@
 {% if rows %}
 <div class="table-scroll">
-<table>
+<table class="runs">
   <thead><tr><th>Request</th><th>Asked by</th><th class="num">Total</th><th>Status</th><th>When</th></tr></thead>
   <tbody>
   {% for r in rows %}
     {% set label, tone = STATUS.get(r.status, (r.status, "")) %}
-    <tr class="link-row" onclick="location.href='/requests/{{ r.trace_id }}'">
+    <tr class="link-row">
       <td><a class="row-link" href="/requests/{{ r.trace_id }}">{{ r.request_text|truncate(72) }}</a><span class="sub">{{ r.buyer_org|truncate(40) }}</span></td>
       <td class="small">{{ (r.requested_by|person) or ("The agent (low stock)" if r.trigger else "–") }}</td>
       <td class="num">{{ r.total_net|eur if r.total_net else "–" }}</td>

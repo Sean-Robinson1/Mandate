@@ -29,7 +29,7 @@
         <td class="small nowrap">{{ e.ts|when("%d %b %H:%M:%S") }}</td>
         <td>{{ e.label }}</td>
         <td class="small muted">{{ e.actor }}</td>
-        <td><a class="mono" href="/requests/{{ e.trace_id }}">{{ e.trace_id }}</a></td>
+        <td>{% if e.event_type == "mandate.amended" %}<a class="mono" href="/rules">{{ e.trace_id }}</a>{% else %}<a class="mono" href="/requests/{{ e.trace_id }}">{{ e.trace_id }}</a>{% endif %}</td>
         <td class="mono muted" title="{{ e.hash }}">{{ e.hash[:12] }}</td>
       </tr>
     {% endfor %}

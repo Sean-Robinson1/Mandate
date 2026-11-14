@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} · Trusted Trade{% endblock %}
+{% block content %}
+<h1>{{ title }}</h1>
+<div class="verdict bad">
+  <p class="verdict-title">{{ detail or "The console could not do that." }}</p>
+  <p>Nothing was changed by this attempt.</p>
+  <div class="actions">
+    <button type="button" class="btn secondary" onclick="history.back()">Go back</button>
+    <a class="btn secondary" href="/">Supplies</a>
+  </div>
+</div>
+{% endblock %}

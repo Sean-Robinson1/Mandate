@@ -136,11 +136,11 @@ class Gateway:
         now = self.clock()
 
         # ---- who is asking, and on whose authority
-        org_key = self.registry.public_key(mandate.signer_key_id)
+        org_key = self.registry.public_key(mandate.signer_key_id, org=mandate.buyer_org)
         mandate_ok = bool(org_key and verify_document(body.mandate, org_key))
         if not check("mandate.signature", mandate_ok,
                      f"Mandate {mandate.mandate_id} is signed by {mandate.buyer_org}'s registered key" if mandate_ok else
-                     "The mandate is not signed by a registered buyer organisation, or was changed after signing"):
+                     f"The mandate is not signed by {mandate.buyer_org}'s registered key, or was changed after signing"):
             return refused("mandate signature invalid")
         if not check("mandate.match", order.mandate_id == mandate.mandate_id,
                      "The order names the mandate it was sent with"):
@@ -269,6 +269,8 @@ class Gateway:
     def _note_version(self, s, mandate: Mandate, raw: dict, now: datetime) -> tuple[bool, str]:
         """Accept the newest version seen for this mandate id (recording it); refuse anything older or conflicting."""
         record = s.get(MandateRecord, mandate.mandate_id)
+        if record is not None and record.buyer_org != mandate.buyer_org:
+            return False, f"Mandate {mandate.mandate_id} belongs to another buyer organisation"
         if record is not None and mandate.version < record.version:
             return False, (f"Mandate version {mandate.version} has been replaced by version {record.version}; "
                            "the agent must use the current one")
@@ -288,9 +290,9 @@ class Gateway:
             mandate = Mandate.model_validate(raw)
         except ValidationError as e:
             return Result(422, {"error": f"malformed mandate: {e.errors()[0]['msg']}"})
-        org_key = self.registry.public_key(mandate.signer_key_id)
+        org_key = self.registry.public_key(mandate.signer_key_id, org=mandate.buyer_org)
         if not (org_key and verify_document(raw, org_key)):
-            return Result(403, {"error": "the mandate is not signed by a registered buyer organisation"})
+            return Result(403, {"error": f"the mandate is not signed by {mandate.buyer_org}'s registered key"})
         with self.sessions() as s:
             ok, message = self._note_version(s, mandate, raw, self.clock())
             if not ok:

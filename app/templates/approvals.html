@@ -2,8 +2,9 @@
 {% block title %}Approvals · Trusted Trade{% endblock %}
 {% block content %}
 <h1>Approvals</h1>
-<p class="lede">Plans the agent may not order alone. Nothing here has been ordered yet.</p>
-<section style="margin-top:28px">
+<p class="lede">Plans the agent may not order alone for {{ my_org.buyer_org }}. Nothing here has been ordered yet.
+  {%- if not can_approve %} Only {{ my_org.approver_name }} can decide them.{% endif %}</p>
+<section class="first">
   {% if rows %}
   <div class="table-scroll">
   <table>
@@ -15,7 +16,7 @@
         <td class="small">{% for m in reasons[r.trace_id] %}{{ m }}{% if not loop.last %}<br>{% endif %}{% endfor %}</td>
         <td class="num">{{ r.total_net|eur }}</td>
         <td class="small nowrap">{{ approvers.get(r.trace_id, "–") }}</td>
-        <td class="num"><a class="btn secondary" href="/requests/{{ r.trace_id }}">Review</a></td>
+        <td class="num"><a class="btn {{ '' if can_approve else 'secondary' }}" href="/requests/{{ r.trace_id }}">{{ "Review" if can_approve else "View" }}</a></td>
       </tr>
     {% endfor %}
     </tbody>
