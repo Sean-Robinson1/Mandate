@@ -3,6 +3,11 @@
 Junction 2026 Valio Aimo challenge: how a wholesaler lets outside purchasing agents order safely.
 Audience is hackathon judges: the UX and the trust story matter more than code polish.
 
+## Current plan (14 Nov): read `docs/PLAN.md` first
+Equal billing: a kitchen operations dashboard (menu, recipes, live sales, stock, waste, food cost) **and** the
+trusted ordering agent through Valio Aimo. Adds a restaurant kitchen next to the hotel and school. Work items
+and owners are in the table in `docs/PLAN.md`: claim one there and push before starting.
+
 ## Layout
 - `gateway/`: Valio Aimo's side (REST on :8100, plus MCP). Talks to the challenge's mock API.
 - `app/`: the buyer's agent and console (:8000). Talks to the gateway **over HTTP only**.
