@@ -634,6 +634,7 @@ def menu_page(request: Request, saved: str = "", error: str = ""):
         day = kitchen.today(s)
         views = menu.dishes(s, me.org_key, today=day)
         impact = menu.price_impact(s, me.org_key, views) if views else []
+        cheaper = prices.overview(s, me.org_key)["cheaper"] if views else []
     sold = sum(v.sold_week for v in views)
     cost = sum(v.cost * v.sold_week for v in views)
     net = sum(v.net_price * v.sold_week for v in views)
@@ -643,6 +644,7 @@ def menu_page(request: Request, saved: str = "", error: str = ""):
     return page(request, "menu.html", active="menu", groups=[g for g in groups if g[1]], views=views, sold=sold,
                 week_pct=round(100 * cost / net, 1) if net else None, target=menu.FOOD_COST_TARGET, vat=menu.VAT,
                 net_week=round(net, 2), margin_week=round(net - cost, 2), below=below, impact=impact, notice=notice,
+                saving=cheaper[0] if cheaper else None, food_cost_week=round(cost, 2),
                 can_price=is_manager(me), approver=agent.approver_name(MANDATES[me.org_key]))
 
 
