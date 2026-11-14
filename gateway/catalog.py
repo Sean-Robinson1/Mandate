@@ -42,6 +42,14 @@ def to_product(p: dict) -> Product:
         reliability=p.get("reliability"), co2_per_kg=p.get("co2_per_kg"))
 
 
+def to_detail(p: dict) -> "ProductDetail":
+    from protocol.wire import ProductDetail
+    subs = p.get("substitutes") or []
+    return ProductDetail(**to_product(p).model_dump(), description=p.get("description_en") or None,
+                         ingredients=p.get("ingredients_en") or None,
+                         substitutes=[str(x.get("id", x)) if isinstance(x, dict) else str(x) for x in subs][:10])
+
+
 def _claim_words(claim: str) -> str:
     if claim.startswith("FREE_FROM_"):
         return claim[10:].replace("_", " ").lower() + "-free"

@@ -19,9 +19,9 @@ def offer_for(world, ids=("100001",)) -> dict:
 
 
 def place(world, offer: dict, units: int, buyer: str = "hotel", *, approval: dict | None = None,
-          mandate: dict | None = None, signer=None, product_id: str = "100001"):
+          mandate: dict | None = None, signer=None, product_id: str = "100001", reference: str = "test"):
     m = world.mandates[buyer]
-    order = {"offer_id": offer["offer_id"], "mandate_id": m.mandate_id, "buyer_reference": "test",
+    order = {"offer_id": offer["offer_id"], "mandate_id": m.mandate_id, "buyer_reference": reference,
              "lines": [{"product_id": product_id, "sales_units": units}], "approval": approval}
     signed = sign_document(order, signer) if signer else keys.sign_order(order, m)
     return world.client._call("POST", "/v1/orders", json={"order": signed,
@@ -59,8 +59,16 @@ def test_order_within_limits_is_confirmed_and_signed(world):
 def test_an_offer_can_be_used_once(world):
     offer = offer_for(world)
     assert place(world, offer, 100)[0] == 201
-    status, body = place(world, offer, 100)
+    status, body = place(world, offer, 100, reference="another order")
     assert status == 409 and "offer.unused" in failed(body)
+    status, body = place(world, offer, 90)                                  # same reference, different lines
+    assert status == 409 and "offer.unused" in failed(body)
+
+
+def test_a_resent_order_gets_the_same_confirmation_not_a_second_order(world):
+    offer = offer_for(world)
+    first, again = place(world, offer, 100), place(world, offer, 100)       # the first answer was lost
+    assert first[0] == again[0] == 201 and first[1]["order_id"] == again[1]["order_id"]
 
 
 def test_mandate_changed_after_signing_is_refused(world):
@@ -141,3 +149,10 @@ def test_search_reports_near_misses(world):
     status, body = world.client._call("GET", "/v1/products", params={"q": "milk", "claims": ["VEGAN"]})
     assert status == 200 and body["products"] == []
     assert {n["reason"] for n in body["not_matching"]} == {"is not vegan"}
+
+
+def test_product_page_shows_catalog_facts_and_rejects_odd_ids(world):
+    status, body = world.client._call("GET", "/v1/products/100001")
+    assert status == 200 and body["product_id"] == "100001" and "description" in body
+    assert world.client._call("GET", "/v1/products/nope")[0] == 404
+    assert world.client._call("GET", "/v1/products/a%20b")[0] == 422

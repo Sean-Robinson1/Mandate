@@ -88,3 +88,16 @@ Each entry: what we assumed, why, and what would replace it in production.
 19. **The audit log is tamper-evident inside the database, not tamper-proof.** Edits, gaps and deletions from
     the end are detected, but someone who can rewrite every row and the head record can forge a consistent
     log. Production: publish the head hash periodically somewhere the database administrator cannot change.
+
+## Reasonable orders, resends and products
+
+20. **"Unusual amount" compares a request with the kitchen's own usual week**: the item's typical daily use
+    times its week pattern, from the kitchen's stock records. The limit (default 3 weeks) is in the signed
+    mandate, so the purchasing manager sets it. A request for an item the kitchen does not stock, or in another
+    unit, is not checked by this rule. The rule is code, not the LLM; it can only send an order to a person.
+21. **Orders are never dropped when Valio Aimo does not answer.** The signed order is saved before sending, tried
+    three times, then queued and resent every 20 seconds. Valio Aimo answers a resend of an order it already
+    confirmed (same mandate, buyer reference, offer and lines) with the same signed confirmation, so a lost answer
+    never causes a second order. Production: a durable outbox and Valio Aimo's order API with idempotency keys.
+22. **Product pages show Valio Aimo's catalog facts through its gateway.** We could not confirm the webshop's
+    product link format, so the "Open in Valio Aimo's webshop" link appears only when `VALIO_SHOP_URL` is set.

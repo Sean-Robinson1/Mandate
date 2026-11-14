@@ -28,6 +28,7 @@ class Bands(BaseModel):
     late_days_max: int = 0                        # days after deadline a human may still approve
     min_intent_confidence: float = 0.8            # below: ask the human
     min_reliability_auto: float = 0.9             # known reliability below this needs a human
+    unusual_qty_weeks: float = 3.0                # more than this many weeks of the kitchen's usual use needs a human
 
 
 class HardConstraints(BaseModel):

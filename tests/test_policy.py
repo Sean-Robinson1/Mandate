@@ -586,3 +586,12 @@ def test_json_schema_has_ids_and_matches_the_file_on_disk():
     assert "limits" in schema["required"]
     path = Path(__file__).resolve().parent.parent / "schemas" / "mandate.schema.json"
     assert json.loads(path.read_text(encoding="utf-8")) == schema
+
+
+def test_unusual_amount_for_this_kitchen_needs_a_person():
+    ctx = make_ctx(usual_week_qty=1000.0, usual_item="Lactose-free milk")         # 1,000 L a week
+    assert "quantity.unusual" not in outcomes(run(intent=make_intent(quantity=3000), ctx=ctx))   # exactly 3 weeks
+    result = run(intent=make_intent(quantity=3100), ctx=ctx)
+    assert outcomes(result)["quantity.unusual"] is Decision.NEEDS_HUMAN
+    assert "weeks of lactose-free milk" in next(r.message for r in result.reasons if r.rule == "quantity.unusual")
+    assert "quantity.unusual" not in outcomes(run(intent=make_intent(quantity=99999)))   # usage unknown: no rule

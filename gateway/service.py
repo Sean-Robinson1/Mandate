@@ -156,6 +156,15 @@ class Gateway:
             return refused(next(c.message for c in checks if not c.ok))
 
         with self.sessions() as s:
+            # A resend of an order we already confirmed (its answer was lost on the way): same signed answer again.
+            earlier = s.scalar(select(OrderRecord).where(OrderRecord.mandate_id == order.mandate_id,
+                                                         OrderRecord.buyer_reference == order.buyer_reference,
+                                                         OrderRecord.offer_id == order.offer_id))
+            if earlier is not None:
+                answer = json.loads(earlier.confirmation_json)
+                same = sorted((l["product_id"], l["sales_units"]) for l in answer["lines"]) ==                     sorted((l.product_id, l.sales_units) for l in order.lines)
+                if same:
+                    return Result(201, answer)
             # Claim the offer first: an UPDATE takes the write lock, so concurrent orders are checked one at a time.
             order_id = f"AIMO-{uuid.uuid4().hex[:8].upper()}"
             claimed = s.execute(update(OfferRecord).where(OfferRecord.offer_id == order.offer_id,
@@ -251,7 +260,7 @@ class Gateway:
                               buyer_org=mandate.buyer_org, status="CONFIRMED", total_net=total,
                               confirmed_at=now.isoformat(timespec="seconds"),
                               delivery_date=confirmation.delivery_date.isoformat(), approval_signature=approval_sig,
-                              confirmation_json=json.dumps(signed)))
+                              confirmation_json=json.dumps(signed), buyer_reference=order.buyer_reference))
             s.commit()
         return Result(201, signed)
 

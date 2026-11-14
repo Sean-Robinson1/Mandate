@@ -419,6 +419,23 @@ def uncertainty_reliability(intent, plan, mandate, ctx):
     )
 
 
+def quantity_unusual(intent, plan, mandate, ctx):
+    """Far more than the kitchen usually uses (e.g. 300 kg of butter for a kitchen using 40 kg a week)."""
+    usual = ctx.usual_week_qty
+    if not usual or usual <= 0:
+        return None
+    weeks = intent.quantity / usual
+    limit = mandate.bands.unusual_qty_weeks
+    if weeks <= limit:
+        return None
+    unit = intent.unit.value.lower() if intent.unit.value != "PCS" else "pieces"
+    item = (ctx.usual_item or "this item").lower()
+    return _reason("quantity.unusual", NEEDS_HUMAN,
+                   f"{intent.quantity:,g} {unit} is about {weeks:,.0f} weeks of {item} for this kitchen, which uses "
+                   f"about {usual:,.0f} {unit} a week. Orders over {limit:g} weeks' worth need a person to confirm.",
+                   weeks=round(weeks, 1), usual_week=usual, limit_weeks=limit)
+
+
 def review_required(intent, plan, mandate, ctx):
     """The buyer chose 'ask first' for what this request restocks. Can only make the decision stricter."""
     if not ctx.review_reason:
@@ -453,6 +470,7 @@ RULES: list[tuple[str, Rule]] = [
     ("substitution.split", substitution_split),
     ("uncertainty.intent_confidence", uncertainty_intent_confidence),
     ("uncertainty.reliability", uncertainty_reliability),
+    ("quantity.unusual", quantity_unusual),
     ("request.review_required", review_required),
 ]
 

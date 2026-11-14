@@ -28,7 +28,7 @@
     {% else %}
       <span class="cell-wrap">{% if f.kind == "eur" %}<span class="unit">€</span>{% endif %}
         <input type="text" inputmode="decimal" id="{{ f.path }}" name="{{ f.path }}" value="{{ values[f.path] }}">
-        {% if f.kind in ("pct", "share") %}<span class="unit">%</span>{% endif %}</span>
+        {% if f.kind in ("pct", "share") %}<span class="unit">%</span>{% elif f.kind == "weeks" %}<span class="unit">weeks</span>{% endif %}</span>
     {% endif %}
   </div>
   {% endfor %}

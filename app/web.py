@@ -9,6 +9,7 @@ import hmac
 import json
 import logging
 import threading
+import time
 from datetime import date, datetime
 from pathlib import Path
 from urllib.parse import urlencode
@@ -55,12 +56,28 @@ def _publish_mandates() -> None:
 
 threading.Thread(target=_publish_mandates, daemon=True).start()
 
+
+def _resend_loop() -> None:
+    """Orders Valio Aimo did not answer are sent again until it does: they are never dropped."""
+    while True:
+        time.sleep(20)
+        try:
+            with SessionLocal() as s:
+                for trace_id in agent.resend_queued(s, GATEWAY, MANDATE_BY_ID):
+                    log.info("queued order %s answered by Valio Aimo", trace_id)
+        except Exception:                                    # noqa: BLE001  keep the loop alive; logged in full
+            log.exception("resending queued orders failed")
+
+
+threading.Thread(target=_resend_loop, daemon=True).start()
+
 STATUS = {
     "WORKING": ("Working on it", "busy"),
     "DECIDING": ("Placing the order", "busy"),
     "ORDERED": ("Ordered", "ok"),
     "APPROVED": ("Approved and ordered", "ok"),
     "NEEDS_HUMAN": ("Waiting for approval", "warn"),
+    "QUEUED": ("Queued: resending to Valio Aimo", "warn"),
     "NEEDS_CLARIFICATION": ("Needs more detail", "warn"),
     "REFUSED": ("Not ordered", "bad"),
     "DECLINED": ("Declined", "bad"),
@@ -92,6 +109,7 @@ RULE_LABELS = {
     "uncertainty.reliability": "Delivery reliability is good",
     "uncertainty.unconfirmed_quantity": "Stock quantity is confirmed",
     "request.review_required": "The kitchen lets the agent restock this alone",
+    "quantity.unusual": "The amount is normal for this kitchen",
 }
 
 EVENT_LABELS = {
@@ -674,6 +692,22 @@ def revise(request: Request, trace_id: str, text: str = Form(...)):
                                 trigger=f"Sent back with changes by {me.name}")
     threading.Thread(target=_work, args=(new_id, text, mandate, reason), daemon=True).start()
     return RedirectResponse(f"/requests/{new_id}", status_code=303)
+
+
+@app.get("/products/{product_id}", include_in_schema=False)
+def product_page(request: Request, product_id: str):
+    """A product as Valio Aimo's catalog describes it, fetched from Valio Aimo's gateway."""
+    if not product_id.replace("-", "").replace("_", "").isalnum() or len(product_id) > 20:
+        raise HTTPException(404, "no such product")
+    try:
+        p = GATEWAY.product(product_id)
+    except GatewayError as e:
+        raise HTTPException(404 if "404" in str(e) else 502, str(e))
+    shop = None
+    if config.VALIO_SHOP_URL and (p.get("gtin") or "{id}" in config.VALIO_SHOP_URL):
+        shop = config.VALIO_SHOP_URL.replace("{gtin}", p.get("gtin") or "").replace("{id}", p["product_id"])
+    return page(request, "product.html", p=p, shop=shop, raw=json.dumps(p, indent=2, ensure_ascii=False),
+                active="activity")
 
 
 @app.get("/approvals", include_in_schema=False)

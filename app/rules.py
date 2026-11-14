@@ -25,7 +25,7 @@ ALLERGENS = {"AN": "tree nuts", "AP": "peanuts", "AM": "milk", "AE": "egg", "AF"
 class Field:
     path: str            # dotted path in the mandate, e.g. "limits.per_order_auto_eur"
     label: str
-    kind: str            # eur | pct | share | allergens | bool | date
+    kind: str            # eur | pct | share | weeks | allergens | bool | date
     hint: str = ""
 
 
@@ -35,6 +35,7 @@ FIELDS = [
     Field("limits.per_order_max_eur", "Never above, per order, even with approval", "eur"),
     Field("bands.price_premium_auto_pct", "Accept up to this much above the cheapest option", "pct"),
     Field("bands.min_reliability_auto", "Minimum delivery reliability to order alone", "share"),
+    Field("bands.unusual_qty_weeks", "Ask a person when an order is more than this many weeks of usual use", "weeks"),
     Field("hard_constraints.excluded_allergens", "Never buy products containing", "allergens"),
     Field("hard_constraints.exclude_may_contain", "Also refuse products that may contain traces", "bool"),
     Field("substitution.allow_split_orders", "The agent may split an order across products", "bool"),
@@ -62,6 +63,8 @@ def show(field: Field, value) -> str:
         return f"{value:g}%"
     if field.kind == "share":
         return f"{value * 100:g}%"
+    if field.kind == "weeks":
+        return f"{value:g} weeks"
     if field.kind == "allergens":
         return ", ".join(ALLERGENS.get(a, a) for a in value) or "nothing"
     if field.kind == "bool":
@@ -127,7 +130,7 @@ def diff(current: Mandate, proposed: dict) -> list[dict]:
 
 def _looser(f: Field, old, new) -> bool:
     """Does this change give the agent more freedom? Shown so the signer notices."""
-    if f.kind == "eur" or f.kind == "pct":
+    if f.kind in ("eur", "pct", "weeks"):
         return new > old
     if f.kind == "share":
         return new < old

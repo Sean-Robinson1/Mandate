@@ -32,6 +32,7 @@ class Order(Base):
     delivery_date: Mapped[str | None] = mapped_column(String(10), nullable=True)
     confirmation_json: Mapped[str] = mapped_column(Text, default="")   # Valio Aimo's signed confirmation
     arrives_on_day: Mapped[int | None] = mapped_column(Integer, nullable=True)   # simulated kitchen day
+    request_json: Mapped[str] = mapped_column(Text, default="")      # the signed order as sent, for resending
 
 
 class Supply(Base):

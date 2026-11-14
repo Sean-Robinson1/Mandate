@@ -4,14 +4,15 @@ Run:  .venv/Scripts/python -m uvicorn gateway.api:create_app --factory --port 81
 """
 from __future__ import annotations
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Path, Query
 from fastapi.responses import JSONResponse, RedirectResponse
 
 from gateway.backend import ValioClient
 from gateway.keys import gateway_signer, registry
 from gateway.service import Gateway
 from gateway.store import make_sessionmaker
-from protocol.wire import OfferRequest, OrderConfirmation, OrderRefused, PlaceOrder, SearchResult
+from gateway import catalog
+from protocol.wire import OfferRequest, OrderConfirmation, OrderRefused, PlaceOrder, ProductDetail, SearchResult
 
 DESCRIPTION = """
 The interface through which an external purchasing agent works with Valio Aimo.
@@ -49,6 +50,14 @@ def create_app(gateway: Gateway | None = None) -> FastAPI:
                claims: list[str] = Query([], description="Required claims, e.g. FREE_FROM_LACTOSE"),
                allergens: list[str] = Query([], description="Excluded allergens (GS1 codes), e.g. AN")):
         return gw.search(q.lower().split(), category, exclude, claims, allergens)
+
+    @api.get("/v1/products/{product_id}", tags=["catalog"], response_model=ProductDetail,
+             summary="One product's catalog facts: allergens, claims, reliability, description")
+    def product(product_id: str = Path(..., pattern=r"^[0-9A-Za-z_-]{1,20}$")):
+        p = catalog.products_by_id([product_id]).get(product_id)
+        if p is None:
+            raise HTTPException(404, f"no product {product_id}")
+        return catalog.to_detail(p)
 
     @api.post("/v1/offers", tags=["offers"], status_code=201, summary="Request a signed offer")
     def offer(req: OfferRequest):

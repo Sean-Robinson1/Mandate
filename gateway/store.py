@@ -1,7 +1,7 @@
 """Valio Aimo's own records: offers it issued and orders it accepted. A separate database from the buyer's."""
 from __future__ import annotations
 
-from sqlalchemy import Float, Integer, String, Text, create_engine
+from sqlalchemy import Float, Integer, String, Text, create_engine, inspect, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 import settings as config
@@ -35,6 +35,7 @@ class OrderRecord(Base):
     delivery_date: Mapped[str] = mapped_column(String(10))
     approval_signature: Mapped[str | None] = mapped_column(String(120), nullable=True, unique=True)  # used once
     confirmation_json: Mapped[str] = mapped_column(Text)               # the signed confirmation, as sent
+    buyer_reference: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)  # resends match it
 
 
 class MandateRecord(Base):
@@ -54,4 +55,7 @@ def make_sessionmaker(url: str | None = None):
     connect_args = {"timeout": 30, "check_same_thread": False} if url.startswith("sqlite") else {}
     engine = create_engine(url, connect_args=connect_args)
     Base.metadata.create_all(engine)
+    with engine.begin() as conn:                    # a database from before resends: add the column
+        if "buyer_reference" not in {c["name"] for c in inspect(conn).get_columns("orders")}:
+            conn.execute(text("ALTER TABLE orders ADD COLUMN buyer_reference VARCHAR(80)"))
     return sessionmaker(engine, expire_on_commit=False)

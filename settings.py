@@ -23,5 +23,7 @@ DATABASE_URL = os.getenv("DATABASE_URL") or f"sqlite:///{ROOT / 'junction.db'}"
 # "claude_cli" (local: uses the Claude Code subscription), "gemini", or "none" (rule-based parser only).
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "claude_cli")
 CLAUDE_CLI_MODEL = os.getenv("CLAUDE_CLI_MODEL", "haiku")
+# Optional link to a product in Valio Aimo's webshop, e.g. "https://<shop>/search?q={gtin}" ({gtin} or {id}).
+VALIO_SHOP_URL = os.getenv("VALIO_SHOP_URL", "")
 # Shared secret a kitchen's own stock system sends to POST /api/stock-counts; unset = that endpoint is off.
 STOCK_API_TOKEN = os.getenv("STOCK_API_TOKEN", "")

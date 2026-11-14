@@ -38,6 +38,8 @@
         <div class="line-act">
           {% if r.open_run and r.open_run.status == "NEEDS_HUMAN" %}
             <a class="status warn" href="/requests/{{ r.open_run.trace_id }}"><span class="dot"></span>Waiting for {{ approver }}</a>
+          {% elif r.open_run and r.open_run.status == "QUEUED" %}
+            <a class="status warn" href="/requests/{{ r.open_run.trace_id }}"><span class="dot"></span>Queued: resending to Valio Aimo</a>
           {% elif r.open_run %}
             <a class="status busy" href="/requests/{{ r.open_run.trace_id }}"><span class="dot"></span>Agent is ordering</a>
           {% elif g.agent and r.last_run and r.last_run.status in STOPPED %}

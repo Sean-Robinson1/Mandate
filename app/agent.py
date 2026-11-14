@@ -14,6 +14,7 @@ and is released if Valio Aimo refuses.
 from __future__ import annotations
 
 import hashlib
+import time
 import json
 import uuid
 from dataclasses import dataclass, field
@@ -24,7 +25,8 @@ from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 import settings as config
-from app import keys, planner, policy
+from app import keys, kitchen, planner, policy
+from app.mandates import DEMO_MANDATES
 from app.audit import append_event, lock_chain
 from app.db import Order, Run
 from app.gateway_client import GatewayClient, GatewayError, OrderRefusedError, UntrustedResponse
@@ -34,7 +36,7 @@ from app.models import (Candidate, Decision, IntentSpec, Mandate, Plan, PolicyCo
                         Rejection, Unit)
 from app.timeline import StepLog
 from protocol.signing import canonical_bytes
-from protocol.wire import Offer, OrderLine, OrderRequest, SearchResult
+from protocol.wire import Offer, OrderConfirmation, OrderLine, OrderRequest, SearchResult
 
 AGENT = "buyer-agent"
 
@@ -82,9 +84,18 @@ def week_spend(session: Session, mandate_id: str, now: datetime) -> float:
     return round(float(total), 2)
 
 
-def _context(session: Session, mandate: Mandate, now: datetime, review_reason: str | None = None) -> PolicyContext:
+ORG_OF = {m.mandate_id: key for key, m in DEMO_MANDATES.items()}
+
+
+def _context(session: Session, mandate: Mandate, now: datetime, review_reason: str | None = None,
+             intent: IntentSpec | None = None, supply_id: int | None = None) -> PolicyContext:
+    usual = None
+    if intent is not None and mandate.mandate_id in ORG_OF:      # the kitchen's own usage, from its stock records
+        usual = kitchen.usual_week(session, ORG_OF[mandate.mandate_id], intent.product_terms, intent.unit.value,
+                                   supply_id)
     return PolicyContext(now=now, week_spend_eur=week_spend(session, mandate.mandate_id, now),
-                         mandate_signature_valid=keys.verify_mandate(mandate), review_reason=review_reason)
+                         mandate_signature_valid=keys.verify_mandate(mandate), review_reason=review_reason,
+                         usual_item=usual[0] if usual else None, usual_week_qty=usual[1] if usual else None)
 
 
 def _eur(v: float) -> str:
@@ -216,32 +227,70 @@ def _signed_order(trace_id: str, mandate: Mandate, plan: Plan, offer_id: str, ap
     return keys.sign_order(request.model_dump(mode="json", exclude={"signature", "signer_key_id"}), mandate)
 
 
+SEND_ATTEMPTS = 3
+SEND_PAUSE_S = (0.0, 1.0, 3.0)         # before each attempt
+
+
 def _send(session: Session, gw: GatewayClient, steps: StepLog, row: Run, order: Order, mandate: Mandate, plan: Plan,
           offer_id: str, approval: dict | None) -> str:
-    """Send the reserved order to Valio Aimo and record the outcome. Returns the run's new status."""
-    try:
-        confirmation, signed = gw.place_order(_signed_order(row.trace_id, mandate, plan, offer_id, approval),
-                                              mandate.model_dump(mode="json"))
-    except OrderRefusedError as e:
+    """Send the reserved order to Valio Aimo and record the outcome. Returns CONFIRMED, REFUSED, QUEUED or FAILED.
+
+    The signed order is saved before it is sent. If Valio Aimo cannot be reached it is tried again; if it still
+    cannot be reached the order stays reserved and queued, and resend_queued() sends the same signed order later.
+    Valio Aimo answers a resend of an order it already confirmed with the same confirmation, so nothing is lost
+    or ordered twice when an answer goes missing on the way back."""
+    signed_order = _signed_order(row.trace_id, mandate, plan, offer_id, approval)
+    order.request_json = json.dumps(signed_order)
+    session.commit()
+    error: Exception | None = None
+    for attempt in range(SEND_ATTEMPTS):
+        time.sleep(SEND_PAUSE_S[min(attempt, len(SEND_PAUSE_S) - 1)])
+        try:
+            confirmation, signed = gw.place_order(signed_order, mandate.model_dump(mode="json"))
+            break
+        except OrderRefusedError as e:
+            return _refused(session, steps, row, order, e)
+        except UntrustedResponse as e:
+            error = e
+            break
+        except GatewayError as e:
+            error = e
+    else:
         lock_chain(session)
-        order.status = "REJECTED"
-        failed = [c for c in e.refusal.checks if not c.ok]
-        append_event(session, trace_id=row.trace_id, actor="valio-aimo", event_type="order.refused",
-                     payload={"error": e.refusal.error, "failed_checks": [c.model_dump() for c in failed]})
-        steps.agent("Valio Aimo refused the order", e.refusal.error, "bad")
-        row.receipt += f"\nValio Aimo refused the order: {e.refusal.error}"
+        append_event(session, trace_id=row.trace_id, actor="gateway-client", event_type="order.queued",
+                     payload={"error": str(error)[:500], "attempts": SEND_ATTEMPTS})
+        steps.agent("Valio Aimo could not be reached",
+                    "The signed order is saved and will be sent again automatically until Valio Aimo answers. "
+                    "It is not lost and cannot be placed twice.", "warn")
+        row.receipt += "\nValio Aimo could not be reached; the order is queued and will be sent again automatically."
         session.commit()
-        return "REFUSED"
-    except (GatewayError, UntrustedResponse) as e:
+        return "QUEUED"
+    if error is not None:                                    # an answer we cannot trust: never assume it ordered
         lock_chain(session)
         order.status = "REJECTED"
         append_event(session, trace_id=row.trace_id, actor="gateway-client", event_type="order.failed",
-                     payload={"error": str(e)[:500]})
-        steps.agent("The order could not be placed", str(e), "bad")
-        row.receipt += f"\nThe order could not be placed: {e}"
+                     payload={"error": str(error)[:500]})
+        steps.agent("The order could not be placed", str(error), "bad")
+        row.receipt += f"\nThe order could not be placed: {error}"
         session.commit()
         return "FAILED"
+    return _confirmed(session, steps, row, order, offer_id, confirmation, signed)
 
+
+def _refused(session: Session, steps: StepLog, row: Run, order: Order, e: OrderRefusedError) -> str:
+    lock_chain(session)
+    order.status = "REJECTED"
+    failed = [c for c in e.refusal.checks if not c.ok]
+    append_event(session, trace_id=row.trace_id, actor="valio-aimo", event_type="order.refused",
+                 payload={"error": e.refusal.error, "failed_checks": [c.model_dump() for c in failed]})
+    steps.agent("Valio Aimo refused the order", e.refusal.error, "bad")
+    row.receipt += f"\nValio Aimo refused the order: {e.refusal.error}"
+    session.commit()
+    return "REFUSED"
+
+
+def _confirmed(session: Session, steps: StepLog, row: Run, order: Order, offer_id: str,
+               confirmation: OrderConfirmation, signed: dict) -> str:
     lock_chain(session)
     order.status, order.supplier_order_id = "PLACED", confirmation.order_id
     order.delivery_date, order.confirmation_json = confirmation.delivery_date.isoformat(), json.dumps(signed)
@@ -254,6 +303,38 @@ def _send(session: Session, gw: GatewayClient, steps: StepLog, row: Run, order: 
                 f"Valid · order {confirmation.order_id} arrives {confirmation.delivery_date:%a %d %b}", "ok")
     session.commit()
     return "CONFIRMED"
+
+
+def resend_queued(session: Session, gateway: GatewayClient, mandates: dict[str, Mandate]) -> list[str]:
+    """Send every queued order again (the same signed order). Returns the trace ids that got an answer.
+
+    No lock is held during the call to Valio Aimo; each outcome is written in its own short transaction."""
+    done = []
+    queued = session.scalars(select(Run).where(Run.status == "QUEUED")).all()
+    for row in queued:
+        order = session.scalar(select(Order).where(Order.trace_id == row.trace_id, Order.status == "RESERVED"))
+        mandate = mandates.get(row.mandate_id)
+        if order is None or not order.request_json or mandate is None:
+            continue
+        steps = StepLog(session, row.trace_id)
+        gw = gateway.recording(steps.exchange)
+        signed_order = json.loads(order.request_json)
+        try:
+            confirmation, signed = gw.place_order(signed_order, mandate.model_dump(mode="json"))
+        except OrderRefusedError as e:
+            _refused(session, steps, row, order, e)
+            row.status = "REFUSED"
+        except UntrustedResponse:
+            continue                                   # try again later; never assume it ordered
+        except GatewayError:
+            continue
+        else:
+            _confirmed(session, steps, row, order, signed_order["offer_id"], confirmation, signed)
+            row.status = "APPROVED" if row.approval_json else "ORDERED"
+            row.receipt += f"\nSent again: Valio Aimo confirmed order {row.order_id}."
+        session.commit()
+        done.append(row.trace_id)
+    return done
 
 
 # ---------------------------------------------------------------- run
@@ -335,7 +416,7 @@ def run(text: str, mandate: Mandate, session: Session, gateway: GatewayClient, l
     # ---- decision: one short transaction under the chain lock
     lock_chain(session)
     with steps.held():
-        ctx = _context(session, mandate, now, review_reason)
+        ctx = _context(session, mandate, now, review_reason, intent, row.supply_id)
         result = policy.evaluate(intent, plan, mandate, ctx)
         trail.log("policy.evaluated", {**result.model_dump(mode="json"), "week_spend_eur": ctx.week_spend_eur},
                   actor="policy-engine")
@@ -361,7 +442,7 @@ def run(text: str, mandate: Mandate, session: Session, gateway: GatewayClient, l
 
     # ---- place the order with Valio Aimo: no lock held
     outcome = _send(session, gw, steps, row, order, mandate, plan, offer.offer_id, approval=None)
-    status = {"CONFIRMED": "ORDERED", "REFUSED": "REFUSED", "FAILED": "FAILED"}[outcome]
+    status = {"CONFIRMED": "ORDERED", "REFUSED": "REFUSED", "FAILED": "FAILED", "QUEUED": "QUEUED"}[outcome]
     row.status = status
     if outcome == "CONFIRMED":
         row.receipt = write_receipt(intent, plan, result, mandate, row.order_id)
@@ -461,7 +542,7 @@ def decide(session: Session, trace_id: str, mandate: Mandate, approve: bool, gat
             session.commit()
             return row
 
-        recheck = policy.evaluate(intent, plan, mandate, _context(session, mandate, now))
+        recheck = policy.evaluate(intent, plan, mandate, _context(session, mandate, now, None, intent, row.supply_id))
         hard = [r for r in recheck.reasons if r.outcome is Decision.REJECT]
         seen = {_fingerprint(r) for r in shown}
         unseen = [r for r in recheck.reasons if r.outcome is Decision.NEEDS_HUMAN and _fingerprint(r) not in seen]
@@ -514,6 +595,6 @@ def decide(session: Session, trace_id: str, mandate: Mandate, approve: bool, gat
                         + (f" Note: {note}" if note else ""))
         order.receipt = row.receipt
     else:
-        row.status = "REFUSED" if outcome == "REFUSED" else "FAILED"
+        row.status = {"REFUSED": "REFUSED", "QUEUED": "QUEUED"}.get(outcome, "FAILED")
     session.commit()
     return row

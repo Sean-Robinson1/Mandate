@@ -233,3 +233,44 @@ def test_concurrent_approvals_place_one_order(world):
     assert [x for x in results if x] == ["APPROVED"]
     assert len(errors) == 3 and all(isinstance(e, ValueError) for e in errors)
     assert supplier_orders(world) == 1 and chain_ok(world)
+
+
+def test_a_lost_confirmation_is_resent_and_ordered_exactly_once(world, monkeypatch):
+    """Valio Aimo confirms, but the answer never arrives: the agent queues the order and resends it later."""
+    from app.gateway_client import GatewayClient, GatewayError
+    monkeypatch.setattr(agent, "SEND_PAUSE_S", (0.0,))
+    real = GatewayClient.place_order
+
+    def answer_lost(self, *args, **kwargs):
+        real(self, *args, **kwargs)
+        raise GatewayError("timed out waiting for Valio Aimo")
+
+    monkeypatch.setattr(GatewayClient, "place_order", answer_lost)
+    r = order(world, 1000)
+    assert r.status == "QUEUED"
+    assert [o.status for o in orders(world, "RESERVED")] == ["RESERVED"]      # still counted, not dropped
+    assert supplier_orders(world) == 1
+
+    monkeypatch.setattr(GatewayClient, "place_order", real)                   # Valio Aimo reachable again
+    with world.buyer_db() as s:
+        assert agent.resend_queued(s, world.client, {m.mandate_id: m for m in world.mandates.values()}) == [r.trace_id]
+        row = s.get(Run, r.trace_id)
+        assert row.status == "ORDERED" and row.order_id.startswith("AIMO-")
+    assert supplier_orders(world) == 1                                          # the same order, not a second one
+    assert [o.status for o in orders(world)] == ["PLACED"]
+    assert chain_ok(world)
+
+
+def test_an_unreachable_gateway_keeps_the_order_queued(world, monkeypatch):
+    from app.gateway_client import GatewayClient, GatewayError
+    monkeypatch.setattr(agent, "SEND_PAUSE_S", (0.0,))
+
+    def down(self, *args, **kwargs):
+        raise GatewayError("connection refused")
+
+    monkeypatch.setattr(GatewayClient, "place_order", down)
+    r = order(world, 1000)
+    with world.buyer_db() as s:
+        assert agent.resend_queued(s, world.client, {m.mandate_id: m for m in world.mandates.values()}) == []
+        assert s.get(Run, r.trace_id).status == "QUEUED"
+    assert supplier_orders(world) == 0

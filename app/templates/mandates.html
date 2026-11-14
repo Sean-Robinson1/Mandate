@@ -66,6 +66,10 @@
         <td class="zone ok">{{ (b.min_reliability_auto * 100)|round|int }}% or better</td>
         <td class="zone warn">Lower</td>
         <td class="zone bad">–</td></tr>
+      <tr><td>Amount compared with usual use</td>
+        <td class="zone ok">Up to {{ b.unusual_qty_weeks|qty }} weeks' worth</td>
+        <td class="zone warn">More</td>
+        <td class="zone bad">–</td></tr>
       <tr><td>Splitting an order</td>
         <td class="zone ok">{{ "Allowed" if m.substitution.allow_split_orders else "–" }}</td>
         <td class="zone warn">{{ "–" if m.substitution.allow_split_orders else "Always asks" }}</td>

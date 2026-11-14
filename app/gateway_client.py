@@ -96,6 +96,9 @@ class GatewayClient:
             params["category"] = category
         return SearchResult.model_validate(self._ok(*self._call("GET", "/v1/products", params=params), "search"))
 
+    def product(self, product_id: str) -> dict:
+        return self._ok(*self._call("GET", f"/v1/products/{product_id}"), "reading the product")
+
     def offer(self, products: list[str], delivery_by: date, buyer_org: str) -> tuple[Offer, dict]:
         body = self._ok(*self._call("POST", "/v1/offers", json={
             "products": products, "delivery_by": delivery_by.isoformat(), "buyer_org": buyer_org}), "offer request")

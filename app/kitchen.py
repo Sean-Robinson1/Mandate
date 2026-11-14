@@ -29,7 +29,7 @@ from sqlalchemy.orm import Session
 import settings as config
 from app.db import Delivery, Order, Run, SimState, StockLevel, Supply
 
-OPEN = ("WORKING", "DECIDING", "NEEDS_HUMAN")
+OPEN = ("WORKING", "DECIDING", "NEEDS_HUMAN", "QUEUED")
 STOPPED = ("REFUSED", "FAILED", "DECLINED", "EXPIRED", "NEEDS_CLARIFICATION")
 CREW_FIELDS = {"on_hand", "daily_use"}                     # anyone in the kitchen
 MANAGER_FIELDS = {"reorder_below", "order_up_to", "rule"}  # the purchasing manager
@@ -310,6 +310,8 @@ def sheet(session: Session, org_key: str, approver_name: str = "the approver") -
                                                   or (order_by is not None and order_by - day <= ORDER_AHEAD))
         if open_run and open_run.status == "NEEDS_HUMAN":
             status, tone = f"Waiting for {approver_name}", "warn"
+        elif open_run and open_run.status == "QUEUED":
+            status, tone = "Queued for Valio Aimo", "warn"
         elif open_run:
             status, tone = "Agent is ordering", "busy"
         elif any(i.due for i in expected):
@@ -439,6 +441,22 @@ def restock_text(supply: Supply, quantity: float, on: date | None = None) -> str
     on = on or datetime.now(config.HELSINKI).date()
     by = on + timedelta(days=3)
     return f"Restock {quantity:,g} {UNIT_WORDS.get(supply.unit, supply.unit)} of {supply.ask_as} by {by:%A}"
+
+
+def usual_week(session: Session, org_key: str, terms: list[str], unit: str,
+               supply_id: int | None = None) -> tuple[str, float] | None:
+    """The kitchen's usual weekly use of the item a request is for: its own row if known, else the item whose
+    product words match the request (same unit). None if the kitchen does not stock it."""
+    supplies = session.scalars(select(Supply).where(Supply.org_key == org_key)).all()
+    match = next((s for s in supplies if s.id == supply_id), None)
+    if match is None:
+        words = [t.lower() for t in terms]
+        match = next((s for s in supplies if s.unit == unit and words
+                      and all(w in f"{s.ask_as} {s.name}".lower() for w in words)), None)
+    if match is None or match.unit != unit or match.daily_use <= 0:
+        return None
+    week = sum(WEEK.get(org_key, FLAT)) * match.daily_use
+    return match.name, round(week, 2)
 
 
 def review_reason(supply: Supply | None) -> str | None:

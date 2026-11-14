@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}{{ p.name }} · Trusted Trade{% endblock %}
+{% block content %}
+<div class="eyebrow">Valio Aimo catalog · product {{ p.product_id }}{% if p.gtin %} · GTIN {{ p.gtin }}{% endif %}</div>
+<div class="page-head">
+  <h1>{{ p.name }}</h1>
+  {% if shop %}<a class="btn secondary" href="{{ shop }}" target="_blank" rel="noopener">Open in Valio Aimo's webshop ↗</a>{% endif %}
+</div>
+<p class="lede">{{ p.brand or p.vendor|title }} · sold per {{ p.sales_unit|lower }}. These facts come from Valio Aimo's
+  catalog, the same ones the agent and Valio Aimo check orders against.</p>
+
+<dl class="facts" style="margin-top:20px">
+  <div><dt>Delivers on time</dt><dd>{% if p.reliability is not none %}<span class="{{ 'bad-text' if p.reliability < 0.9 }}">{{ (p.reliability * 100)|round|int }}%</span> of the time{% else %}No record{% endif %}</dd></div>
+  <div><dt>Contains</dt><dd>{% if not p.has_allergen_data %}<span class="bad-text">No allergen data</span>{% elif p.contains %}{% for a in p.contains %}{{ ALLERGEN_NAMES.get(a, a)|capitalize }}{{ ", " if not loop.last }}{% endfor %}{% else %}No listed allergens{% endif %}</dd></div>
+  <div><dt>May contain</dt><dd>{% if p.may_contain %}{% for a in p.may_contain %}{{ ALLERGEN_NAMES.get(a, a)|capitalize }}{{ ", " if not loop.last }}{% endfor %}{% else %}–{% endif %}</dd></div>
+  <div><dt>Carbon footprint</dt><dd>{% if p.co2_per_kg is not none %}{{ p.co2_per_kg|qty }} kg CO₂e per kg <span class="muted">product-group average</span>{% else %}–{% endif %}</dd></div>
+</dl>
+
+{% if p.claims or p.labels %}
+<section>
+  <div class="section-head"><h2>Claims and labels</h2></div>
+  <p style="margin-top:12px">{% for c in p.claims %}<span class="chip ok">{{ c|claim }}</span> {% endfor %}{% for l in p.labels %}<span class="chip busy">{{ l|replace("_", " ")|capitalize }}</span> {% endfor %}</p>
+</section>
+{% endif %}
+
+{% if p.description or p.ingredients %}
+<section>
+  <div class="section-head"><h2>Description</h2></div>
+  {% if p.description %}<p style="margin-top:12px; max-width:70ch">{{ p.description }}</p>{% endif %}
+  {% if p.ingredients %}<p class="small muted" style="margin-top:10px; max-width:70ch"><strong>Ingredients:</strong> {{ p.ingredients }}</p>{% endif %}
+</section>
+{% endif %}
+
+{% if p.substitutes %}
+<section>
+  <div class="section-head"><h2>Valio Aimo's suggested substitutes</h2></div>
+  <p style="margin-top:12px">{% for sid in p.substitutes %}<a href="/products/{{ sid }}">Product {{ sid }}</a>{{ " · " if not loop.last }}{% endfor %}</p>
+</section>
+{% endif %}
+
+<details class="more">
+  <summary>Valio Aimo's answer, as sent (GET /v1/products/{{ p.product_id }})</summary>
+  <pre class="receipt">{{ raw }}</pre>
+</details>
+{% endblock %}

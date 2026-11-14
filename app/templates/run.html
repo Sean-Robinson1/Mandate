@@ -27,6 +27,11 @@
     {% else %}
     <p>The agent found a plan but may not order it alone. Nothing has been ordered.</p>
     {% endif %}
+  {% elif run.status == "QUEUED" %}
+    <p class="verdict-title">Queued: waiting to reach Valio Aimo</p>
+    <p>The order passed every check and is signed, but Valio Aimo did not answer. It is saved and sent again
+      automatically every few seconds until Valio Aimo confirms or refuses it. It cannot be placed twice: Valio
+      Aimo recognises a resend and returns the same confirmation.</p>
   {% elif run.status == "DECLINED" %}
     <p class="verdict-title">Declined by {{ approval.approver_name or approval.approver }}</p>
     <p>Decided on {{ approval.decided_at|when }}. Nothing was ordered.</p>
@@ -90,7 +95,7 @@
     <tbody>
     {% for l in plan.lines %}
       <tr>
-        <td>{{ l.name }}<span class="sub">{{ l.vendor|title }}{% if l.relaxed_preferences %} · differs on {{ l.relaxed_preferences|join(", ") }}{% endif %}</span></td>
+        <td><a href="/products/{{ l.product_id }}">{{ l.name }}</a><span class="sub">{{ l.vendor|title }}{% if l.relaxed_preferences %} · differs on {{ l.relaxed_preferences|join(", ") }}{% endif %}</span></td>
         <td class="num">{{ l.sales_units|qty }} × {{ l.sales_unit }}<span class="sub">{{ l.measure|qty }} {{ unit }}</span></td>
         <td class="num">{{ l.comparison_price|eur }}</td>
         <td class="num">{{ l.line_total|eur }}</td>
@@ -148,7 +153,7 @@
     <summary>{{ plan.rejected|length }} other products considered</summary>
     <table>
       <thead><tr><th>Product</th><th>Why not</th></tr></thead>
-      <tbody>{% for r in plan.rejected %}<tr><td>{{ r.name }}</td><td>{{ r.reason[:1]|upper }}{{ r.reason[1:] }}</td></tr>{% endfor %}</tbody>
+      <tbody>{% for r in plan.rejected %}<tr><td><a href="/products/{{ r.product_id }}">{{ r.name }}</a></td><td>{{ r.reason[:1]|upper }}{{ r.reason[1:] }}</td></tr>{% endfor %}</tbody>
     </table>
   </details>
   {% endif %}
@@ -181,7 +186,7 @@
 <script>
   (function () {
     const verdict = document.getElementById("verdict");
-    if (!["WORKING", "DECIDING"].includes(verdict.dataset.status)) return;
+    if (!["WORKING", "DECIDING", "QUEUED"].includes(verdict.dataset.status)) return;
     const timeline = document.getElementById("timeline");
     async function poll() {
       try {

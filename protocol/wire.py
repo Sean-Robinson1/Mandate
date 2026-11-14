@@ -38,6 +38,14 @@ class Product(BaseModel):
     co2_per_kg: float | None = None                        # product-group average, kg CO2e per kg
 
 
+class ProductDetail(Product):
+    """One product's full catalog page: the facts an agent searches on, plus what a person reads."""
+
+    description: str | None = None
+    ingredients: str | None = None
+    substitutes: list[str] = Field(default_factory=list)  # product ids Valio Aimo lists as substitutes
+
+
 class NotMatching(BaseModel):
     product_id: str
     name: str

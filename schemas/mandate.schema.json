@@ -46,6 +46,11 @@
           "default": 0.9,
           "title": "Min Reliability Auto",
           "type": "number"
+        },
+        "unusual_qty_weeks": {
+          "default": 3.0,
+          "title": "Unusual Qty Weeks",
+          "type": "number"
         }
       },
       "title": "Bands",
