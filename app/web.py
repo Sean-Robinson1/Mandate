@@ -18,17 +18,17 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 
 import settings as config
-from app import agent, keys, policy
-from app.audit import AuditEvent, event_to_dict, events_for_trace, verify_chain
+from app import agent, keys, kitchen, policy, rules
+from app.audit import AuditEvent, append_event, event_to_dict, events_for_trace, lock_chain, verify_chain
 from app.db import Order, Run, SessionLocal, Step, init_db
-from app.gateway_client import GatewayClient
+from app.gateway_client import GatewayClient, GatewayError
 from app.llm import get_llm
 from app.mandates import PEOPLE
 from app.timeline import ALLERGEN_NAMES, describe
 
 log = logging.getLogger("console")
 HERE = Path(__file__).parent
-app = FastAPI(title="Trusted Trade buyer console", version="0.3.0")
+app = FastAPI(title="Trusted Trade buyer console", version="0.4.0")
 app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
 templates = Jinja2Templates(directory=HERE / "templates")
 
@@ -36,6 +36,21 @@ init_db()
 MANDATES = keys.load_mandates()
 MANDATE_BY_ID = {m.mandate_id: m for m in MANDATES.values()}
 GATEWAY = GatewayClient()
+_restock_lock = threading.Lock()          # one restock check at a time, so a low row starts one order, not two
+with SessionLocal() as _s:
+    kitchen.seed(_s)
+
+
+def _publish_mandates() -> None:
+    """Make sure Valio Aimo holds the current version of each mandate (it may have been down when they changed)."""
+    for m in MANDATES.values():
+        try:
+            GATEWAY.publish_mandate(m.model_dump(mode="json"))
+        except GatewayError as e:
+            log.warning("could not publish %s v%s to Valio Aimo: %s", m.mandate_id, m.version, e)
+
+
+threading.Thread(target=_publish_mandates, daemon=True).start()
 
 STATUS = {
     "WORKING": ("Working on it", "busy"),
@@ -73,6 +88,7 @@ RULE_LABELS = {
     "uncertainty.intent_confidence": "The request was clear",
     "uncertainty.reliability": "Delivery reliability is good",
     "uncertainty.unconfirmed_quantity": "Stock quantity is confirmed",
+    "request.review_required": "The kitchen lets the agent restock this alone",
 }
 
 EVENT_LABELS = {
@@ -92,6 +108,7 @@ EVENT_LABELS = {
     "order.failed": "Order could not be placed",
     "offer.changed": "Valio Aimo's offer changed",
     "order.placed": "Order placed",
+    "mandate.amended": "Mandate changed and signed",
 }
 
 EXAMPLES = [
@@ -146,6 +163,11 @@ templates.env.globals.update(STATUS=STATUS, ALLERGEN_NAMES=ALLERGEN_NAMES, PEOPL
 def current_person(request: Request):
     """The person using the console (a demo sign-in: pick a name; see ASSUMPTIONS.md)."""
     return PEOPLE.get(request.cookies.get("person", "")) or PEOPLE["aino.koskinen"]
+
+
+def is_manager(person) -> bool:
+    """The purchasing manager: the approver named in their organisation's mandate."""
+    return person.id == MANDATES[person.org_key].approver
 
 
 def page(request: Request, name: str, **ctx):
@@ -225,18 +247,75 @@ def event_summary(e: dict) -> str:
 
 # ---------------------------------------------------------------- pages
 
+def _sheet_context(me) -> dict:
+    mandate = MANDATES[me.org_key]
+    with SessionLocal() as s:
+        rows = kitchen.sheet(s, me.org_key, agent.approver_name(mandate))
+        day = kitchen.today(s)
+    return {"rows": rows, "day": day, "manager": is_manager(me), "busy": any(r.tone == "busy" for r in rows)}
+
+
 @app.get("/", include_in_schema=False)
 def home(request: Request):
+    me = current_person(request)
     with SessionLocal() as s:
-        recent = s.scalars(select(Run).order_by(Run.created_at.desc()).limit(6)).all()
-    return page(request, "home.html", examples=EXAMPLES, recent=recent, active="new")
+        recent = s.scalars(select(Run).where(Run.mandate_id == MANDATES[me.org_key].mandate_id)
+                           .order_by(Run.created_at.desc()).limit(6)).all()
+    return page(request, "home.html", examples=EXAMPLES, recent=recent, active="supplies", **_sheet_context(me))
 
 
-def _work(trace_id: str, text: str, mandate) -> None:
+@app.get("/supplies/sheet", include_in_schema=False)
+def supplies_sheet(request: Request):
+    """The sheet alone, for the page to refresh while the agent works."""
+    me = current_person(request)
+    ctx = _sheet_context(me)
+    return JSONResponse({"html": templates.get_template("_sheet.html").render(**ctx), "busy": ctx["busy"]})
+
+
+@app.post("/supplies/{supply_id}", include_in_schema=False)
+async def edit_supply(request: Request, supply_id: int):
+    me = current_person(request)
+    body = await request.json()
+    with SessionLocal() as s:
+        supply = s.get(kitchen.Supply, supply_id)
+        if supply is None or supply.org_key != me.org_key:
+            return JSONResponse({"error": "not your kitchen's sheet"}, status_code=403)
+        try:
+            kitchen.update_cell(s, supply_id, str(body.get("field")), str(body.get("value")), me.id, is_manager(me))
+        except PermissionError as e:
+            return JSONResponse({"error": str(e)}, status_code=403)
+        except ValueError as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+    start_restocks(me.org_key)
+    return JSONResponse({"ok": True})
+
+
+@app.post("/kitchen/next-day", include_in_schema=False)
+def next_day():
+    with SessionLocal() as s:
+        kitchen.next_day(s)
+    for org_key in MANDATES:
+        start_restocks(org_key)
+    return RedirectResponse("/", status_code=303)
+
+
+def start_restocks(org_key: str) -> list[str]:
+    """Let the agent act on every row that is low. Returns the trace ids it started."""
+    mandate = MANDATES[org_key]
+    started = []
+    with _restock_lock, SessionLocal() as s:
+        for r in kitchen.due_restocks(s, org_key):
+            trace_id = agent.open_run(s, r.text, mandate, supply_id=r.supply_id, trigger=r.trigger)
+            threading.Thread(target=_work, args=(trace_id, r.text, mandate, r.review_reason), daemon=True).start()
+            started.append(trace_id)
+    return started
+
+
+def _work(trace_id: str, text: str, mandate, review_reason: str | None = None) -> None:
     """Background: the agent's run. Any unexpected error is recorded rather than leaving the run spinning."""
     with SessionLocal() as s:
         try:
-            agent.run(text, mandate, s, GATEWAY, llm=get_llm(), trace_id=trace_id)
+            agent.run(text, mandate, s, GATEWAY, llm=get_llm(), trace_id=trace_id, review_reason=review_reason)
         except Exception as e:                                 # noqa: BLE001  shown to the user, logged in full
             log.exception("run %s failed", trace_id)
             s.rollback()
@@ -337,9 +416,91 @@ def activity(request: Request):
 
 
 @app.get("/mandates", include_in_schema=False)
-def mandates(request: Request):
-    items = [{"key": k, "m": m, "valid": keys.verify_mandate(m)} for k, m in MANDATES.items()]
-    return page(request, "mandates.html", items=items, active="mandates")
+def mandates_redirect():
+    return RedirectResponse("/rules", status_code=301)
+
+
+def _held_by_valio_aimo(mandate_id: str) -> int | None:
+    try:
+        return GATEWAY.mandate_version(mandate_id)
+    except GatewayError:
+        return None
+
+
+@app.get("/rules", include_in_schema=False)
+def rules_page(request: Request, signed: int | None = None):
+    me = current_person(request)
+    with SessionLocal() as s:
+        items = [{"key": k, "m": m, "valid": keys.verify_mandate(m), "history": keys.mandate_history(k),
+                  "valio_version": _held_by_valio_aimo(m.mandate_id), "suggestions": rules.suggestions(s, m),
+                  "can_edit": me.id == m.approver}
+                 for k, m in sorted(MANDATES.items(), key=lambda kv: kv[0] != me.org_key)]
+    return page(request, "mandates.html", items=items, signed=signed, active="rules", show=rules.show,
+                fields={f.path: f for f in rules.FIELDS})
+
+
+def _editable(request: Request, key: str):
+    me = current_person(request)
+    mandate = MANDATES.get(key)
+    if mandate is None:
+        raise HTTPException(404, "no such mandate")
+    if me.id != mandate.approver:
+        raise HTTPException(403, f"only {agent.approver_name(mandate)} can change these rules")
+    return me, mandate
+
+
+@app.get("/rules/{key}/edit", include_in_schema=False)
+def edit_rules(request: Request, key: str):
+    me, mandate = _editable(request, key)
+    values = rules.form_values(mandate)
+    values.update({k: v for k, v in request.query_params.items() if k in values})   # e.g. a suggestion's figure
+    return page(request, "rules_edit.html", key=key, m=mandate, fields=rules.FIELDS, values=values,
+                allergens=rules.ALLERGENS, errors=[], active="rules")
+
+
+@app.post("/rules/{key}/preview", include_in_schema=False)
+async def preview_rules(request: Request, key: str):
+    me, mandate = _editable(request, key)
+    form = dict(await request.form())
+    proposed, errors = rules.parse(form, mandate)
+    changes = rules.diff(mandate, proposed) if not errors else []
+    if errors or not changes:
+        values = {**rules.form_values(mandate), **form}
+        for f in rules.FIELDS:                     # unticked boxes are absent from the form: show them unticked
+            if f.kind == "bool":
+                values[f.path] = bool(form.get(f.path))
+            elif f.kind == "allergens":
+                values[f.path] = [a for a in rules.ALLERGENS if form.get(f"{f.path}.{a}")]
+        return page(request, "rules_edit.html", key=key, m=mandate, fields=rules.FIELDS, values=values,
+                    allergens=rules.ALLERGENS, errors=errors or ["Nothing changed."], active="rules")
+    return page(request, "rules_preview.html", key=key, m=mandate, changes=changes, form=form, active="rules")
+
+
+@app.post("/rules/{key}/sign", include_in_schema=False)
+async def sign_rules(request: Request, key: str):
+    me, mandate = _editable(request, key)
+    form = dict(await request.form())
+    note = str(form.pop("change_note", "")).strip()[:300]
+    proposed, errors = rules.parse(form, mandate)
+    changes = rules.diff(mandate, proposed)
+    if errors or not changes:
+        raise HTTPException(400, "; ".join(errors) or "nothing changed")
+    new = keys.amend_mandate(key, mandate, rules.changes_only(mandate, proposed), me.id, note)
+    MANDATES[key] = new
+    MANDATE_BY_ID[new.mandate_id] = new
+    with SessionLocal() as s:
+        lock_chain(s)
+        append_event(s, trace_id=f"{new.mandate_id}-v{new.version}", actor=f"human:{me.id}",
+                     event_type="mandate.amended",
+                     payload={"mandate_id": new.mandate_id, "version": new.version, "note": note,
+                              "changes": [{k: c[k] for k in ("label", "old", "new")} for c in changes],
+                              "signature": new.signature, "signer_key_id": new.signer_key_id})
+        s.commit()
+    try:
+        GATEWAY.publish_mandate(new.model_dump(mode="json"))
+    except GatewayError as e:
+        log.warning("Valio Aimo did not take mandate %s v%s yet: %s", new.mandate_id, new.version, e)
+    return RedirectResponse(f"/rules?signed={new.version}", status_code=303)
 
 
 @app.get("/audit", include_in_schema=False)

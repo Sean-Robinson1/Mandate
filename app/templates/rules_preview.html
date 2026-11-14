@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Sign the change · Trusted Trade{% endblock %}
+{% block content %}
+<div class="eyebrow"><a href="/rules">Purchasing rules</a> · {{ m.buyer_org }}</div>
+<h1>Sign version {{ m.version + 1 }}?</h1>
+<p class="lede">These are the only differences from version {{ m.version }}.</p>
+
+<div class="table-scroll" style="margin-top:20px">
+<table>
+  <thead><tr><th>Rule</th><th>Now</th><th>After signing</th><th></th></tr></thead>
+  <tbody>
+  {% for c in changes %}
+    <tr>
+      <td>{{ c.label }}</td>
+      <td class="muted">{{ c.old }}</td>
+      <td><strong>{{ c.new }}</strong></td>
+      <td class="small">{% if c.looser %}<span class="status warn"><span class="dot"></span>Gives the agent more freedom</span>{% else %}<span class="status ok"><span class="dot"></span>Stricter</span>{% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<form method="post" action="/rules/{{ key }}/sign" class="stack" style="margin-top:24px">
+  {% for k, v in form.items() %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+  <div>
+    <label class="field-label" for="change_note">Why (kept with the new version)</label>
+    <input type="text" id="change_note" name="change_note" placeholder="e.g. Wedding season: larger milk orders are routine" maxlength="300">
+  </div>
+  <div class="actions" style="margin-top:0">
+    <button class="btn">Sign and send to Valio Aimo</button>
+    <a class="btn secondary" href="/rules/{{ key }}/edit">Back</a>
+  </div>
+  <p class="small muted">Signed with {{ m.buyer_org }}'s key on your authority as {{ me.name }}. The previous version stays in the history.</p>
+</form>
+{% endblock %}

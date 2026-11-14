@@ -1,7 +1,7 @@
 """Valio Aimo's own records: offers it issued and orders it accepted. A separate database from the buyer's."""
 from __future__ import annotations
 
-from sqlalchemy import Float, String, Text, create_engine
+from sqlalchemy import Float, Integer, String, Text, create_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 import settings as config
@@ -35,6 +35,18 @@ class OrderRecord(Base):
     delivery_date: Mapped[str] = mapped_column(String(10))
     approval_signature: Mapped[str | None] = mapped_column(String(120), nullable=True, unique=True)  # used once
     confirmation_json: Mapped[str] = mapped_column(Text)               # the signed confirmation, as sent
+
+
+class MandateRecord(Base):
+    """The newest version of each buyer mandate Valio Aimo has seen. Older versions are refused."""
+
+    __tablename__ = "mandates"
+
+    mandate_id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    version: Mapped[int] = mapped_column(Integer)
+    buyer_org: Mapped[str] = mapped_column(String(200))
+    recorded_at: Mapped[str] = mapped_column(String(40))
+    mandate_json: Mapped[str] = mapped_column(Text)
 
 
 def make_sessionmaker(url: str | None = None):

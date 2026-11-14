@@ -292,6 +292,52 @@ pre.receipt {
 .keys dd { margin: 2px 0 0; color: var(--ink-2); }
 .keys .sub { display: block; color: var(--muted); overflow-wrap: anywhere; margin-top: 2px; }
 
+.trigger { margin-top: 10px; color: var(--ink-2); font-size: 14px; }
+
+/* ---------- supplies sheet ---------- */
+.page-head { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
+.day-form { display: flex; align-items: center; gap: 12px; }
+.day-label { font-weight: 700; color: var(--accent); background: var(--accent-2); padding: 6px 12px; border-radius: 8px; }
+.sheet { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); border-collapse: separate;
+  border-spacing: 0; box-shadow: var(--shadow); overflow: hidden; }
+.sheet th { padding: 10px 12px; background: #f7f9fd; }
+.sheet td { padding: 8px 12px; vertical-align: middle; }
+.sheet th:last-child, .sheet td:last-child { padding-right: 12px; }
+.sheet tbody tr:last-child td { border-bottom: 0; }
+.sheet tr.row-low td { background: #fff8f7; }
+.cell-wrap { display: inline-flex; align-items: center; gap: 4px; }
+.unit { color: var(--muted); font-size: 12.5px; }
+input.cell, select.cell, .rules-form input[type="text"], .rules-form input[type="date"] {
+  border: 1px solid var(--line-strong); border-radius: 6px; padding: 5px 8px; background: var(--surface);
+  font-variant-numeric: tabular-nums;
+}
+input.cell { width: 76px; text-align: right; }
+input.cell:hover, select.cell:hover { border-color: var(--accent); }
+input.cell:focus, select.cell:focus { outline: 2px solid var(--accent); outline-offset: 0; border-color: transparent; }
+input.cell.saving { opacity: 0.5; }
+input.cell.invalid { border-color: var(--bad); background: var(--bad-bg); }
+.delivered { color: var(--ok) !important; font-weight: 600; }
+.bad-text { color: var(--bad); }
+.sheet-note { margin-top: 10px; }
+
+/* ---------- purchasing rules ---------- */
+.version-line { display: flex; gap: 16px; flex-wrap: wrap; align-items: baseline; margin: 14px 0 16px; font-size: 13.5px; color: var(--ink-2); }
+.suggestion {
+  display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;
+  margin: 0 0 18px; padding: 14px 18px; border-radius: var(--radius); background: var(--accent-2); border: 1px solid #cfe0f6;
+}
+.suggestion .sub { display: block; color: var(--ink-2); font-size: 13px; margin-top: 2px; max-width: 70ch; }
+.history { list-style: none; padding: 0; margin: 0 0 12px; font-size: 13.5px; }
+.history li { padding: 6px 0; border-bottom: 1px solid var(--line); }
+.rules-form { margin-top: 24px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 8px 24px 20px; box-shadow: var(--shadow); }
+.rule-field { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 16px; align-items: center;
+  padding: 12px 0; border-bottom: 1px solid var(--line); }
+.rule-field > label { color: var(--ink-2); }
+.rules-form input[type="text"] { width: 140px; text-align: right; }
+.checkgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px 12px; }
+.check { display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; cursor: pointer; }
+
 .main { min-width: 0; }
 .story details.raw summary { overflow-wrap: anywhere; }
 
@@ -316,4 +362,6 @@ pre.receipt {
   .story .ex .answer { margin-left: 24px; }
   .wire { display: none; }
   .raw-grid { grid-template-columns: 1fr; }
+  .rule-field { grid-template-columns: 1fr; gap: 6px; }
+  .checkgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

@@ -1,27 +1,35 @@
 {% extends "base.html" %}
-{% block title %}New request · Trusted Trade{% endblock %}
+{% block title %}Supplies · Trusted Trade{% endblock %}
 {% block content %}
 <div class="eyebrow">{{ my_org.buyer_org }} · {{ me.name }}, {{ me.role|lower }}</div>
-<h1>What does the kitchen need?</h1>
-<p class="lede">Say it in plain words. The purchasing agent gets a signed offer from Valio Aimo, picks the best option,
-  and orders it if the mandate allows. Otherwise it asks {{ my_org.approver_name }}.</p>
+<div class="page-head">
+  <h1>Supplies</h1>
+  <form method="post" action="/kitchen/next-day" class="day-form">
+    <span class="day-label">Day {{ day }}</span>
+    <button class="btn secondary" title="Use a day of stock, deliver what is due, and let the agent react">Next day →</button>
+  </form>
+</div>
+<p class="lede">What the kitchen has, and what is on the way. When something runs low, the purchasing agent restocks it
+  from Valio Aimo{% if my_org.approver_name %}, or asks {{ my_org.approver_name }} first where the rule says so{% endif %}.</p>
 
-<form class="stack" method="post" action="/requests" id="request-form" style="margin-top:28px">
-  <div>
-    <label class="field-label" for="text">Request</label>
-    <textarea id="text" name="text" required placeholder="I need 1,000 litres of lactose-free milk by Monday.">{{ examples[0][1] }}</textarea>
-  </div>
-  <div class="form-foot">
-    <button class="btn" type="submit" id="submit">Send to the agent</button>
-    <span class="small muted">The agent may order up to {{ my_org.limits.per_order_auto_eur|eur }} alone
-      {%- if my_org.hard_constraints.excluded_allergens %}, never with {% for a in my_org.hard_constraints.excluded_allergens %}{{ ALLERGEN_NAMES.get(a, a) }}{{ ", " if not loop.last }}{% endfor %}{% endif %}.
-      <a href="/mandates">Mandate</a></span>
-  </div>
-</form>
+<div id="sheet" style="margin-top:20px">{% include "_sheet.html" %}</div>
+<p class="small muted sheet-note" id="sheet-note">
+  {% if manager %}You can change every white cell. Changes save as you leave the cell.
+  {% else %}Record stock counts and daily use in the white cells. Levels and rules are set by {{ my_org.approver_name }}.{% endif %}
+</p>
 
 <section>
-  <div class="section-head"><h2>Try one of these</h2></div>
-  <ul class="examples">
+  <div class="section-head"><h2>Need something else?</h2></div>
+  <form class="stack" method="post" action="/requests" id="request-form" style="margin-top:16px">
+    <textarea id="text" name="text" required aria-label="Request" placeholder="I need 1,000 litres of lactose-free milk by Monday."></textarea>
+    <div class="form-foot">
+      <button class="btn" type="submit" id="submit">Send to the agent</button>
+      <span class="small muted">The agent may order up to {{ my_org.limits.per_order_auto_eur|eur }} alone
+        {%- if my_org.hard_constraints.excluded_allergens %}, never with {% for a in my_org.hard_constraints.excluded_allergens %}{{ ALLERGEN_NAMES.get(a, a) }}{{ ", " if not loop.last }}{% endfor %}{% endif %}.
+        <a href="/rules">Purchasing rules</a></span>
+    </div>
+  </form>
+  <ul class="examples" style="margin-top:12px">
     {% for kind, text in examples %}
     <li><button type="button" data-example="{{ text }}"><span class="ex-kind">{{ kind }}</span><span class="ex-text">{{ text }}</span></button></li>
     {% endfor %}
@@ -37,11 +45,37 @@
 <script>
   const box = document.getElementById("text");
   document.querySelectorAll("[data-example]").forEach(b => b.addEventListener("click", () => {
-    box.value = b.dataset.example; box.focus(); window.scrollTo({top: 0, behavior: "smooth"});
+    box.value = b.dataset.example; box.focus();
   }));
   document.getElementById("request-form").addEventListener("submit", () => {
     const btn = document.getElementById("submit");
     btn.disabled = true; btn.textContent = "Sending…";
   });
+
+  const sheet = document.getElementById("sheet"), note = document.getElementById("sheet-note");
+  const defaultNote = note.innerHTML;
+  async function refresh() {
+    if (sheet.contains(document.activeElement) && document.activeElement.classList.contains("cell")) return;
+    try {
+      const data = await (await fetch("/supplies/sheet", {cache: "no-store"})).json();
+      sheet.innerHTML = data.html;
+    } catch (e) { /* try again on the next tick */ }
+  }
+  sheet.addEventListener("change", async e => {
+    const cell = e.target.closest(".cell");
+    if (!cell) return;
+    const id = cell.closest("tr").dataset.id;
+    cell.classList.add("saving");
+    const r = await fetch(`/supplies/${id}`, {method: "POST", headers: {"Content-Type": "application/json"},
+                                              body: JSON.stringify({field: cell.dataset.field, value: cell.value})});
+    const data = await r.json();
+    cell.classList.remove("saving");
+    if (!r.ok) { note.innerHTML = `<span class="bad-text">${data.error}</span>`; cell.classList.add("invalid"); return; }
+    note.innerHTML = defaultNote;
+    cell.blur();
+    refresh();
+  });
+  sheet.addEventListener("keydown", e => { if (e.key === "Enter" && e.target.classList.contains("cell")) e.target.blur(); });
+  setInterval(refresh, 2500);
 </script>
 {% endblock %}

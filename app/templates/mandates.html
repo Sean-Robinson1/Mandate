@@ -1,18 +1,42 @@
 {% extends "base.html" %}
-{% block title %}Mandates · Trusted Trade{% endblock %}
+{% block title %}Purchasing rules · Trusted Trade{% endblock %}
 {% block content %}
-<h1>Mandates</h1>
-<p class="lede">A mandate is what a buyer organisation authorises its agent to do, signed by the organisation.
-  Each decision falls into one of three zones.</p>
+<h1>Purchasing rules</h1>
+<p class="lede">What each organisation lets its purchasing agent do, as a signed mandate. The purchasing manager can
+  change it: every change is a new version, signed and sent to Valio Aimo, which refuses orders under older versions.</p>
+
+{% if signed %}
+<div class="verdict ok"><p class="verdict-title">Version {{ signed }} signed and sent to Valio Aimo</p>
+  <p>The agent works under the new rules from now on, and Valio Aimo will refuse anything signed under an older version.</p></div>
+{% endif %}
 
 {% for it in items %}
 {% set m = it.m %}{% set b = m.bands %}{% set h = m.hard_constraints %}
 <section>
   <div class="section-head"><h2>{{ m.buyer_org }}</h2>
-    <span class="muted">Valid {{ m.valid_from|string|when("%d %b %Y") }} to {{ m.valid_until|string|when("%d %b %Y") }}</span></div>
+    {% if it.can_edit %}<a class="btn secondary" href="/rules/{{ it.key }}/edit">Change rules</a>
+    {% else %}<span class="muted">Changed by {{ m.approver_name }}</span>{% endif %}</div>
+
+  <div class="version-line">
+    <span><strong>Version {{ m.version }}</strong>{% if m.issued_at %} · signed {{ m.issued_at|string|when }}{% endif %}{% if m.changed_by %} by {{ m.changed_by|person }}{% endif %}</span>
+    {% if m.change_note %}<span class="muted">“{{ m.change_note }}”</span>{% endif %}
+    <span class="status {{ 'ok' if it.valio_version == m.version else 'warn' }}"><span class="dot"></span>
+      {% if it.valio_version == m.version %}Valio Aimo holds this version{% elif it.valio_version %}Valio Aimo holds version {{ it.valio_version }}{% else %}Not yet seen by Valio Aimo{% endif %}</span>
+  </div>
+
+  {% if it.can_edit %}
+  {% for sg in it.suggestions %}
+  <div class="suggestion">
+    <div><strong>Suggestion: let the agent order up to {{ sg.proposed|eur }} alone</strong> (now {{ sg.current|eur }})
+      <span class="sub">{{ sg.evidence }}</span></div>
+    <a class="btn" href="/rules/{{ it.key }}/edit?{{ sg.path }}={{ sg.proposed|int }}">Review the change</a>
+  </div>
+  {% endfor %}
+  {% endif %}
+
   <div class="table-scroll">
   <table class="bands">
-    <thead><tr><th></th><th class="zone ok">Agent decides</th><th class="zone warn">Human approves</th><th class="zone bad">Refused</th></tr></thead>
+    <thead><tr><th></th><th class="zone ok">Agent decides</th><th class="zone warn">A person approves</th><th class="zone bad">Refused</th></tr></thead>
     <tbody>
       <tr><td>Order value</td>
         <td class="zone ok">Up to {{ m.limits.per_order_auto_eur|eur }}</td>
@@ -22,7 +46,7 @@
         <td class="zone ok">Up to {{ m.limits.per_week_auto_eur|eur }}</td>
         <td class="zone warn">Above {{ m.limits.per_week_auto_eur|eur }}</td>
         <td class="zone bad">–</td></tr>
-      <tr><td>Price above cheapest option</td>
+      <tr><td>Price above the cheapest option</td>
         <td class="zone ok">Up to {{ b.price_premium_auto_pct|qty }}%</td>
         <td class="zone warn">Up to {{ b.price_premium_max_pct|qty }}%</td>
         <td class="zone bad">Above {{ b.price_premium_max_pct|qty }}%</td></tr>
@@ -38,26 +62,43 @@
         <td class="zone ok">By the deadline</td>
         <td class="zone warn">{{ "Up to " ~ b.late_days_max ~ " day(s) late" if b.late_days_max else "–" }}</td>
         <td class="zone bad">{{ "Later than that" if b.late_days_max else "Any later" }}</td></tr>
-      <tr><td>Changing a preference</td>
-        <td class="zone ok">{{ m.substitution.relaxable_preferences|join(", ")|replace("_", " ")|capitalize or "None" }}</td>
-        <td class="zone warn">Any other preference</td>
+      <tr><td>Delivery reliability</td>
+        <td class="zone ok">{{ (b.min_reliability_auto * 100)|round|int }}% or better</td>
+        <td class="zone warn">Lower</td>
+        <td class="zone bad">–</td></tr>
+      <tr><td>Splitting an order</td>
+        <td class="zone ok">{{ "Allowed" if m.substitution.allow_split_orders else "–" }}</td>
+        <td class="zone warn">{{ "–" if m.substitution.allow_split_orders else "Always asks" }}</td>
         <td class="zone bad">–</td></tr>
       <tr><td>Allergens</td>
         <td class="zone ok">–</td><td class="zone warn">–</td>
         <td class="zone bad">{% if h.excluded_allergens %}{% for a in h.excluded_allergens %}{{ ALLERGEN_NAMES.get(a, a)|capitalize }}{{ ", " if not loop.last }}{% endfor %}{{ ", including traces" if h.exclude_may_contain }}{{ "; products without allergen data" if h.require_allergen_data }}{% else %}Whatever the request excludes{% endif %}</td></tr>
       <tr><td>Unsure about the request</td>
-        <td class="zone ok">{{ (b.min_intent_confidence * 100)|round|int }}% confident or more</td>
-        <td class="zone warn">Less confident</td>
+        <td class="zone ok">{{ (b.min_intent_confidence * 100)|round|int }}% sure or more</td>
+        <td class="zone warn">Less sure</td>
         <td class="zone bad">–</td></tr>
     </tbody>
   </table>
   </div>
+
   <dl class="keys">
-    <div><dt>Signed by</dt><dd><span class="dot {{ 'ok' if it.valid else 'bad' }}"></span>{{ m.buyer_org }} · signature {{ "verified" if it.valid else "INVALID" }}<span class="mono sub">{{ m.signer_key_id }}</span></dd></div>
-    <div><dt>Agent</dt><dd>Orders signed with this key only<span class="mono sub">{{ m.agent_id }} · {{ m.agent_public_key }}</span></dd></div>
+    <div><dt>Signed by</dt><dd><span class="dot {{ 'ok' if it.valid else 'bad' }}"></span>{{ m.buyer_org }} · signature {{ "verified" if it.valid else "INVALID" }} · valid to {{ m.valid_until }}<span class="mono sub">{{ m.signer_key_id }}</span></dd></div>
+    <div><dt>Agent</dt><dd>Orders are signed with this key only<span class="mono sub">{{ m.agent_id }} · {{ m.agent_public_key }}</span></dd></div>
     <div><dt>Approver</dt><dd>{{ m.approver_name }} · approvals signed with this key<span class="mono sub">{{ m.approver_public_key }}</span></dd></div>
-    <div><dt>Valio Aimo</dt><dd>Checks the signature, the agent's key, the approver's key and the hard limits before accepting any order</dd></div>
+    <div><dt>Valio Aimo</dt><dd>Checks the signature, the version, the agent's key, the approver's key and the hard limits before accepting any order</dd></div>
   </dl>
+
+  {% if it.history %}
+  <details>
+    <summary>Earlier versions ({{ it.history|length }})</summary>
+    <ul class="history">
+      {% for old in it.history %}
+      <li><strong>Version {{ old.version }}</strong>{% if old.issued_at %} · {{ old.issued_at|string|when }}{% endif %}{% if old.changed_by %} · {{ old.changed_by|person }}{% endif %}
+        <span class="muted">· order limit {{ old.limits.per_order_auto_eur|eur }}, weekly {{ old.limits.per_week_auto_eur|eur }}{% if old.change_note %} · “{{ old.change_note }}”{% endif %}</span></li>
+      {% endfor %}
+    </ul>
+  </details>
+  {% endif %}
 </section>
 {% endfor %}
 {% endblock %}

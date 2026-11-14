@@ -77,13 +77,14 @@ def week_spend(session: Session, mandate_id: str, now: datetime) -> float:
     local = _local(now)
     monday = (local - timedelta(days=local.weekday())).date().isoformat()
     total = session.scalar(select(func.coalesce(func.sum(Order.total_net), 0.0)).where(
-        Order.mandate_id == mandate_id, Order.status.in_(("RESERVED", "PLACED")), Order.created_at >= monday))
+        Order.mandate_id == mandate_id, Order.status.in_(("RESERVED", "PLACED", "DELIVERED")),
+        Order.created_at >= monday))
     return round(float(total), 2)
 
 
-def _context(session: Session, mandate: Mandate, now: datetime) -> PolicyContext:
+def _context(session: Session, mandate: Mandate, now: datetime, review_reason: str | None = None) -> PolicyContext:
     return PolicyContext(now=now, week_spend_eur=week_spend(session, mandate.mandate_id, now),
-                         mandate_signature_valid=keys.verify_mandate(mandate))
+                         mandate_signature_valid=keys.verify_mandate(mandate), review_reason=review_reason)
 
 
 def _eur(v: float) -> str:
@@ -258,19 +259,20 @@ def _send(session: Session, gw: GatewayClient, steps: StepLog, row: Run, order: 
 # ---------------------------------------------------------------- run
 
 def open_run(session: Session, text: str, mandate: Mandate, now: datetime | None = None,
-             requested_by: str = "") -> str:
+             requested_by: str = "", supply_id: int | None = None, trigger: str = "") -> str:
     """Create the run so the console can show it at once; run() then does the work."""
     now = now or datetime.now(config.HELSINKI)
     trace_id = uuid.uuid4().hex[:12]
     session.add(Run(trace_id=trace_id, created_at=_local(now).isoformat(timespec="seconds"), request_text=text,
                     mandate_id=mandate.mandate_id, buyer_org=mandate.buyer_org, status="WORKING",
-                    requested_by=requested_by))
+                    requested_by=requested_by, supply_id=supply_id, trigger=trigger))
     session.commit()
     return trace_id
 
 
 def run(text: str, mandate: Mandate, session: Session, gateway: GatewayClient, llm: LLMClient | None = None,
-        now: datetime | None = None, trace_id: str | None = None) -> RunResult:
+        now: datetime | None = None, trace_id: str | None = None, review_reason: str | None = None) -> RunResult:
+    """review_reason: set when the buyer asked to approve this kind of order first (an 'ask first' supply)."""
     now = now or datetime.now(config.HELSINKI)
     trace_id = trace_id or open_run(session, text, mandate, now)
     row = session.get(Run, trace_id)
@@ -333,7 +335,7 @@ def run(text: str, mandate: Mandate, session: Session, gateway: GatewayClient, l
     # ---- decision: one short transaction under the chain lock
     lock_chain(session)
     with steps.held():
-        ctx = _context(session, mandate, now)
+        ctx = _context(session, mandate, now, review_reason)
         result = policy.evaluate(intent, plan, mandate, ctx)
         trail.log("policy.evaluated", {**result.model_dump(mode="json"), "week_spend_eur": ctx.week_spend_eur},
                   actor="policy-engine")

@@ -22,6 +22,16 @@ Each entry: what we assumed, why, and what would replace it in production.
    Every product type in the lexicon has fewer matches; any beyond the limit are counted and noted on the plan.
 9. **Missing allergen data is treated as unsafe** for any buyer with allergen constraints.
 
+## Kitchen
+
+10a. **Kitchen days are simulated.** "Next day" uses each item's daily use and delivers orders whose lead time has
+    passed; the lead time is the real one from Valio Aimo's offer (order date to delivery date), counted in kitchen
+    days. Production: stock from the kitchen's inventory system or stocktakes, deliveries from Valio Aimo's
+    delivery notes.
+10b. **The agent restocks up to the "order up to" level**, rounded up to 10 L or 5 kg, and only when nothing for
+    that row is already on the way or being decided. "Ask first" rows always go to the purchasing manager; that
+    rule lives on the buyer's side (Valio Aimo enforces the mandate, not the kitchen's preferences).
+
 ## Reading requests
 
 10. **"By Monday" means the next Monday after today, Helsinki time**, delivered on or before that date.
@@ -49,6 +59,11 @@ Each entry: what we assumed, why, and what would replace it in production.
 17. **Signing in is picking a name.** The console's person switcher stands in for single sign-on. Approval is
     still bound to the right key: only the approver named in the mandate can decide, and Valio Aimo verifies
     the approver's signature before accepting the order.
+17a. **Mandate changes are signed by the organisation on the purchasing manager's say-so.** The manager reviews
+    the difference and the organisation's key signs the next version; it is published to Valio Aimo, which keeps
+    the highest version per mandate and refuses older ones. Valio Aimo also learns a newer version the first time
+    an order carries it. Limit suggestions only look at orders held back by the per-order limit alone, need three
+    approvals in 30 days and no declines, and never change anything themselves.
 18. **Valio Aimo enforces the mandate's hard limits; the buyer enforces everything.** The gateway checks the
     signatures, validity, allergens, claims, categories, the absolute order cap and the agent's spend authority.
     Softer judgement (price bands, preferences, confidence in the request) stays with the buyer's policy engine.

@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Change rules · Trusted Trade{% endblock %}
+{% block content %}
+<div class="eyebrow"><a href="/rules">Purchasing rules</a> · {{ m.buyer_org }} · version {{ m.version }}</div>
+<h1>Change the rules</h1>
+<p class="lede">Nothing changes until you review the difference and sign it. The new version then goes to Valio Aimo.</p>
+
+{% if errors %}
+<div class="verdict bad"><p class="verdict-title">Check these</p>
+  <ul class="reasons">{% for e in errors %}<li><span class="dot bad"></span>{{ e }}</li>{% endfor %}</ul></div>
+{% endif %}
+
+<form method="post" action="/rules/{{ key }}/preview" class="rules-form">
+  {% for f in fields %}
+  <div class="rule-field">
+    <label for="{{ f.path }}">{{ f.label }}</label>
+    {% if f.kind == "allergens" %}
+      <div class="checkgrid">
+        {% for code, name in allergens.items() %}
+        <label class="check"><input type="checkbox" name="{{ f.path }}.{{ code }}" value="1"
+          {% if code in values[f.path] or values.get(f.path ~ "." ~ code) %}checked{% endif %}> {{ name|capitalize }}</label>
+        {% endfor %}
+      </div>
+    {% elif f.kind == "bool" %}
+      <label class="check"><input type="checkbox" id="{{ f.path }}" name="{{ f.path }}" value="1" {% if values[f.path] in (True, "1", "on") %}checked{% endif %}> Yes</label>
+    {% elif f.kind == "date" %}
+      <input type="date" id="{{ f.path }}" name="{{ f.path }}" value="{{ values[f.path] }}">
+    {% else %}
+      <span class="cell-wrap">{% if f.kind == "eur" %}<span class="unit">€</span>{% endif %}
+        <input type="text" inputmode="decimal" id="{{ f.path }}" name="{{ f.path }}" value="{{ values[f.path] }}">
+        {% if f.kind in ("pct", "share") %}<span class="unit">%</span>{% endif %}</span>
+    {% endif %}
+  </div>
+  {% endfor %}
+  <div class="actions"><button class="btn">Review the difference</button><a class="btn secondary" href="/rules">Cancel</a></div>
+</form>
+{% endblock %}

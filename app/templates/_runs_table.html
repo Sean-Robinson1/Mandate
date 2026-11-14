@@ -7,7 +7,7 @@
     {% set label, tone = STATUS.get(r.status, (r.status, "")) %}
     <tr class="link-row" onclick="location.href='/requests/{{ r.trace_id }}'">
       <td><a class="row-link" href="/requests/{{ r.trace_id }}">{{ r.request_text|truncate(72) }}</a><span class="sub">{{ r.buyer_org|truncate(40) }}</span></td>
-      <td class="small">{{ (r.requested_by|person) or "–" }}</td>
+      <td class="small">{{ (r.requested_by|person) or ("The agent (low stock)" if r.trigger else "–") }}</td>
       <td class="num">{{ r.total_net|eur if r.total_net else "–" }}</td>
       <td><span class="status {{ tone }}"><span class="dot"></span>{{ label }}</span></td>
       <td class="small muted nowrap">{{ r.created_at|when("%d %b, %H:%M") }}</td>

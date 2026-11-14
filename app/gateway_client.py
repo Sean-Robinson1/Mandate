@@ -112,5 +112,17 @@ class GatewayClient:
             raise UntrustedResponse("the order confirmation is not signed by Valio Aimo")
         return OrderConfirmation.model_validate(body), body
 
+    def publish_mandate(self, mandate: dict) -> dict:
+        """Tell Valio Aimo about a new mandate version; older versions are refused from then on."""
+        status, body = self._call("PUT", "/v1/mandates", json=mandate)
+        if status >= 400:
+            raise GatewayError(f"Valio Aimo did not accept the mandate: {body.get('error') or body.get('detail')}")
+        return body
+
+    def mandate_version(self, mandate_id: str) -> int | None:
+        """The version Valio Aimo holds as current, or None if it has not seen this mandate."""
+        status, body = self._call("GET", f"/v1/mandates/{mandate_id}")
+        return body.get("version") if status == 200 else None
+
     def get_order(self, order_id: str) -> dict:
         return self._ok(*self._call("GET", f"/v1/orders/{order_id}"), "order status")

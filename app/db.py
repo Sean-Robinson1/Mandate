@@ -22,7 +22,7 @@ class Order(Base):
     trace_id: Mapped[str] = mapped_column(String(40), index=True, unique=True)   # at most one order per request
     mandate_id: Mapped[str] = mapped_column(String(80), index=True)
     buyer_org: Mapped[str] = mapped_column(String(200))
-    # RESERVED (being placed) | PLACED (confirmed by Valio Aimo) | REJECTED (refused or failed; spends nothing)
+    # RESERVED (being placed) | PLACED (confirmed by Valio Aimo) | DELIVERED | REJECTED (refused or failed)
     status: Mapped[str] = mapped_column(String(30))
     total_net: Mapped[float] = mapped_column(Float)
     created_at: Mapped[str] = mapped_column(String(40))
@@ -31,6 +31,35 @@ class Order(Base):
     supplier_order_id: Mapped[str | None] = mapped_column(String(40), nullable=True)   # Valio Aimo's order id
     delivery_date: Mapped[str | None] = mapped_column(String(10), nullable=True)
     confirmation_json: Mapped[str] = mapped_column(Text, default="")   # Valio Aimo's signed confirmation
+    arrives_on_day: Mapped[int | None] = mapped_column(Integer, nullable=True)   # simulated kitchen day
+
+
+class Supply(Base):
+    """One row of a kitchen's supplies sheet."""
+
+    __tablename__ = "supplies"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    org_key: Mapped[str] = mapped_column(String(20), index=True)     # hotel | school
+    name: Mapped[str] = mapped_column(String(120))
+    ask_as: Mapped[str] = mapped_column(String(120))                 # how the agent asks for it, e.g. "lactose-free milk"
+    unit: Mapped[str] = mapped_column(String(4))                     # L | KG
+    on_hand: Mapped[float] = mapped_column(Float)
+    daily_use: Mapped[float] = mapped_column(Float)
+    reorder_below: Mapped[float] = mapped_column(Float)
+    order_up_to: Mapped[float] = mapped_column(Float)
+    rule: Mapped[str] = mapped_column(String(10), default="auto")   # auto | ask: may the agent restock alone?
+    updated_by: Mapped[str] = mapped_column(String(80), default="")
+    position: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class SimState(Base):
+    """The simulated kitchen day (the demo's 'next day' button)."""
+
+    __tablename__ = "sim_state"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    day: Mapped[int] = mapped_column(Integer, default=1)
 
 
 class Run(Base):
@@ -55,6 +84,8 @@ class Run(Base):
     order_id: Mapped[str | None] = mapped_column(String(40), nullable=True)      # Valio Aimo's order id
     approval_json: Mapped[str] = mapped_column(Text, default="")     # signed approval record, if any
     requested_by: Mapped[str] = mapped_column(String(80), default="")   # person id, or "" for the agent itself
+    supply_id: Mapped[int | None] = mapped_column(Integer, nullable=True)  # the sheet row this restocks, if any
+    trigger: Mapped[str] = mapped_column(Text, default="")              # why the agent started by itself
 
 
 class Step(Base):

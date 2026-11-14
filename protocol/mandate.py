@@ -6,7 +6,7 @@ hard limits (signature, validity, agent identity, spend caps, allergens and clai
 """
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 
 from pydantic import BaseModel, Field
 
@@ -45,9 +45,17 @@ class SubstitutionPolicy(BaseModel):
 
 
 class Mandate(BaseModel):
-    """What the buyer organisation authorises its agent to do. Signed by the organisation."""
+    """What the buyer organisation authorises its agent to do. Signed by the organisation.
+
+    Mandates change over time: each change is a new, higher version, signed again. Valio Aimo always uses the
+    highest version it has seen for a mandate id and refuses older ones, so a looser old version cannot be replayed.
+    """
 
     mandate_id: str
+    version: int = 1
+    issued_at: datetime | None = None
+    changed_by: str = ""                          # who authorised this version (person id)
+    change_note: str = ""
     buyer_org: str
     agent_id: str
     agent_public_key: str | None = None           # base64url Ed25519; the agent signs every order with it

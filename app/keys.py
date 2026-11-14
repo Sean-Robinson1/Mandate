@@ -10,7 +10,9 @@ breaks the signature, and then both the buyer's policy engine and Valio Aimo's g
 """
 from __future__ import annotations
 
+import json
 import re
+from datetime import datetime
 from pathlib import Path
 
 import settings as config
@@ -54,18 +56,48 @@ def onboard(mandate: Mandate, root: Path | None = None) -> None:
     TrustRegistry(_root(root) / "registry").register(org.key_id, mandate.buyer_org, org.public_key_b64())
 
 
+def _mandate_file(key: str, root: Path | None) -> Path:
+    return _root(root) / "buyer" / "mandates" / f"{key}.json"
+
+
 def load_mandates(root: Path | None = None) -> dict[str, Mandate]:
-    """The signed mandates, issued and registered on first run, loaded unchanged afterwards."""
+    """The current signed mandates, issued and registered on first run, loaded unchanged afterwards."""
     out = {}
     for key, draft in DEMO_MANDATES.items():
-        path = _root(root) / "buyer" / "mandates" / f"{key}.json"
-        if not path.exists():
+        path = _mandate_file(key, root)
+        stored = json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
+        if stored is None or "version" not in stored:
+            # First run, or a file signed before mandates had versions: issue version 1 (from the stored terms).
+            base = Mandate.model_validate(stored) if stored else draft
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(issue_mandate(draft, root).model_dump_json(indent=2), encoding="utf-8")
+            path.write_text(issue_mandate(base.model_copy(update={"version": 1}), root).model_dump_json(indent=2),
+                            encoding="utf-8")
         mandate = Mandate.model_validate_json(path.read_text(encoding="utf-8"))
         onboard(mandate, root)
         out[key] = mandate
     return out
+
+
+def amend_mandate(key: str, current: Mandate, changes: dict, changed_by: str, note: str,
+                  root: Path | None = None) -> Mandate:
+    """The organisation signs the next version of its mandate. The previous version is kept in history/."""
+    updated = Mandate.model_validate({**current.model_dump(mode="json"), **changes})
+    new = issue_mandate(updated.model_copy(update={
+        "version": current.version + 1, "issued_at": datetime.now(config.HELSINKI).replace(microsecond=0),
+        "changed_by": changed_by, "change_note": note}), root)
+    path = _mandate_file(key, root)
+    history = path.parent / "history"
+    history.mkdir(parents=True, exist_ok=True)
+    (history / f"{key}.v{current.version}.json").write_text(current.model_dump_json(indent=2), encoding="utf-8")
+    path.write_text(new.model_dump_json(indent=2), encoding="utf-8")
+    return new
+
+
+def mandate_history(key: str, root: Path | None = None) -> list[Mandate]:
+    """Earlier versions, newest first."""
+    history = _mandate_file(key, root).parent / "history"
+    files = sorted(history.glob(f"{key}.v*.json"), key=lambda p: int(p.stem.rsplit(".v", 1)[1]), reverse=True)
+    return [Mandate.model_validate_json(p.read_text(encoding="utf-8")) for p in files]
 
 
 def verify_mandate(mandate: Mandate, root: Path | None = None) -> bool:

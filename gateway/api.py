@@ -22,6 +22,9 @@ The interface through which an external purchasing agent works with Valio Aimo.
    organisation's signed mandate. Above the agent's own limits it must also carry a person's signed approval.
    Valio Aimo checks all of this itself and answers with a signed confirmation, or refuses with the reasons.
 
+Mandates change: a buyer publishes each new signed version (`PUT /v1/mandates`), and Valio Aimo refuses orders
+under any older version.
+
 Verify Valio Aimo's signatures with the key at `/.well-known/jwks.json` (Ed25519 over canonical JSON).
 """
 
@@ -60,6 +63,19 @@ def create_app(gateway: Gateway | None = None) -> FastAPI:
     def place_order(body: PlaceOrder):
         result = gw.place_order(body)
         return JSONResponse(result.body, status_code=result.status)
+
+    @api.put("/v1/mandates", tags=["mandates"], summary="Publish a new version of a buyer's signed mandate")
+    def publish_mandate(mandate: dict):
+        """After this, orders signed under any older version of the mandate are refused."""
+        result = gw.publish_mandate(mandate)
+        return JSONResponse(result.body, status_code=result.status)
+
+    @api.get("/v1/mandates/{mandate_id}", tags=["mandates"], summary="The mandate version Valio Aimo holds as current")
+    def mandate_version(mandate_id: str):
+        version = gw.current_mandate_version(mandate_id)
+        if version is None:
+            raise HTTPException(404, "no version of this mandate has been seen")
+        return {"mandate_id": mandate_id, "version": version}
 
     @api.get("/v1/orders/{order_id}", tags=["orders"], summary="Order status and its signed confirmation")
     def get_order(order_id: str):

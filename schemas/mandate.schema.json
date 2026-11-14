@@ -129,6 +129,34 @@
       "title": "Mandate Id",
       "type": "string"
     },
+    "version": {
+      "default": 1,
+      "title": "Version",
+      "type": "integer"
+    },
+    "issued_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Issued At"
+    },
+    "changed_by": {
+      "default": "",
+      "title": "Changed By",
+      "type": "string"
+    },
+    "change_note": {
+      "default": "",
+      "title": "Change Note",
+      "type": "string"
+    },
     "buyer_org": {
       "title": "Buyer Org",
       "type": "string"

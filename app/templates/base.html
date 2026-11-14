@@ -12,11 +12,11 @@
     <a class="brand" href="/"><span class="brand-mark" aria-hidden="true"></span>Trusted Trade</a>
     <div class="brand-sub">{{ my_org.buyer_org }}</div>
     <nav class="nav" aria-label="Main">
-      <a href="/" {% if active == "new" %}aria-current="page"{% endif %}>New request</a>
+      <a href="/" {% if active == "supplies" %}aria-current="page"{% endif %}>Supplies</a>
       <a href="/approvals" {% if active == "approvals" %}aria-current="page"{% endif %}>Approvals
         {% if pending %}<span class="count">{{ pending }}</span>{% endif %}</a>
       <a href="/activity" {% if active == "activity" %}aria-current="page"{% endif %}>Activity</a>
-      <a href="/mandates" {% if active == "mandates" %}aria-current="page"{% endif %}>Mandates</a>
+      <a href="/rules" {% if active == "rules" %}aria-current="page"{% endif %}>Purchasing rules</a>
       <a href="/audit" {% if active == "audit" %}aria-current="page"{% endif %}>Audit log</a>
     </nav>
     <div class="side-foot">

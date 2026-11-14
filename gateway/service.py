@@ -26,7 +26,7 @@ from sqlalchemy.orm import sessionmaker
 import settings as config
 from gateway import catalog
 from gateway.backend import ValioAPI
-from gateway.store import OfferRecord, OrderRecord
+from gateway.store import MandateRecord, OfferRecord, OrderRecord
 from protocol.mandate import Mandate
 from protocol.registry import TrustRegistry
 from protocol.signing import Signer, sign_document, verify_document
@@ -47,7 +47,7 @@ from protocol.wire import (
 )
 
 UNLIMITED = 999_999          # Terminal products report this; some Stock products report 9999999999
-IDENTITY_CHECKS = {"mandate.signature", "mandate.validity", "order.signature"}
+IDENTITY_CHECKS = {"mandate.signature", "mandate.validity", "mandate.current", "order.signature"}
 
 
 @dataclass
@@ -167,6 +167,9 @@ class Gateway:
                 return refused("unknown offer")
             if not check("offer.unused", claimed == 1, "Each offer can be ordered once"):
                 return refused("offer already used")
+            current, message = self._note_version(s, mandate, body.mandate, now)
+            if not check("mandate.current", current, message):
+                return refused(message)
             signed_offer = json.loads(record.offer_json)
             if not check("offer.signature", verify_document(signed_offer, self.signer.public_key_b64()),
                          "The offer is Valio Aimo's own, unchanged"):
@@ -251,6 +254,46 @@ class Gateway:
                               confirmation_json=json.dumps(signed)))
             s.commit()
         return Result(201, signed)
+
+    # ------------------------------------------------------------ mandate versions
+
+    def _note_version(self, s, mandate: Mandate, raw: dict, now: datetime) -> tuple[bool, str]:
+        """Accept the newest version seen for this mandate id (recording it); refuse anything older or conflicting."""
+        record = s.get(MandateRecord, mandate.mandate_id)
+        if record is not None and mandate.version < record.version:
+            return False, (f"Mandate version {mandate.version} has been replaced by version {record.version}; "
+                           "the agent must use the current one")
+        if record is not None and mandate.version == record.version and json.loads(record.mandate_json) != raw:
+            return False, f"A different mandate {mandate.mandate_id} version {mandate.version} is already registered"
+        if record is None:
+            s.add(MandateRecord(mandate_id=mandate.mandate_id, version=mandate.version, buyer_org=mandate.buyer_org,
+                                recorded_at=now.isoformat(timespec="seconds"), mandate_json=json.dumps(raw)))
+        elif mandate.version > record.version:
+            record.version, record.mandate_json = mandate.version, json.dumps(raw)
+            record.recorded_at = now.isoformat(timespec="seconds")
+        return True, f"Mandate version {mandate.version} is the current one"
+
+    def publish_mandate(self, raw: dict) -> Result:
+        """A buyer organisation announces a new mandate version. From now on older versions are refused."""
+        try:
+            mandate = Mandate.model_validate(raw)
+        except ValidationError as e:
+            return Result(422, {"error": f"malformed mandate: {e.errors()[0]['msg']}"})
+        org_key = self.registry.public_key(mandate.signer_key_id)
+        if not (org_key and verify_document(raw, org_key)):
+            return Result(403, {"error": "the mandate is not signed by a registered buyer organisation"})
+        with self.sessions() as s:
+            ok, message = self._note_version(s, mandate, raw, self.clock())
+            if not ok:
+                return Result(409, {"error": message})
+            s.commit()
+        return Result(200, {"mandate_id": mandate.mandate_id, "version": mandate.version, "status": "current",
+                            "message": message})
+
+    def current_mandate_version(self, mandate_id: str) -> int | None:
+        with self.sessions() as s:
+            record = s.get(MandateRecord, mandate_id)
+            return record.version if record else None
 
     def _check_authority(self, order: OrderRequest, mandate: Mandate, total: float, week: float, check) -> str | None:
         """Within its limits the agent orders alone; beyond them a signed approval of exactly these lines is needed."""

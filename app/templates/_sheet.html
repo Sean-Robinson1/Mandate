@@ -1,0 +1,40 @@
+<div class="table-scroll">
+<table class="sheet">
+  <thead>
+    <tr>
+      <th>Item</th>
+      <th class="num">On hand</th>
+      <th class="num">Use per day</th>
+      <th class="num">Lasts</th>
+      <th class="num">Reorder below</th>
+      <th class="num">Order up to</th>
+      <th>When low</th>
+      <th>Status</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for r in rows %}{% set s = r.supply %}
+    <tr data-id="{{ s.id }}" class="{{ 'row-low' if r.tone == 'bad' }}">
+      <td>{{ s.name }}<span class="sub">ordered as “{{ s.ask_as }}”</span></td>
+      <td class="num"><span class="cell-wrap"><input class="cell" data-field="on_hand" value="{{ s.on_hand|qty }}" inputmode="decimal" aria-label="{{ s.name }} on hand"><span class="unit">{{ s.unit }}</span></span>
+        {% if r.delivered_today %}<span class="sub delivered">+{{ r.delivered_today|qty }} delivered today</span>{% endif %}</td>
+      <td class="num"><span class="cell-wrap"><input class="cell" data-field="daily_use" value="{{ s.daily_use|qty }}" inputmode="decimal" aria-label="{{ s.name }} use per day"><span class="unit">{{ s.unit }}</span></span></td>
+      <td class="num {{ 'bad-text' if r.days_left is not none and r.days_left < 2 }}">{{ (r.days_left|qty ~ " days") if r.days_left is not none else "–" }}</td>
+      {% if manager %}
+      <td class="num"><span class="cell-wrap"><input class="cell" data-field="reorder_below" value="{{ s.reorder_below|qty }}" inputmode="decimal" aria-label="{{ s.name }} reorder below"><span class="unit">{{ s.unit }}</span></span></td>
+      <td class="num"><span class="cell-wrap"><input class="cell" data-field="order_up_to" value="{{ s.order_up_to|qty }}" inputmode="decimal" aria-label="{{ s.name }} order up to"><span class="unit">{{ s.unit }}</span></span></td>
+      <td><select class="cell" data-field="rule" aria-label="{{ s.name }}: when low">
+            <option value="auto" {% if s.rule == "auto" %}selected{% endif %}>Agent restocks</option>
+            <option value="ask" {% if s.rule == "ask" %}selected{% endif %}>Ask me first</option>
+          </select></td>
+      {% else %}
+      <td class="num">{{ s.reorder_below|qty }} {{ s.unit }}</td>
+      <td class="num">{{ s.order_up_to|qty }} {{ s.unit }}</td>
+      <td>{{ "Agent restocks" if s.rule == "auto" else "Ask first" }}</td>
+      {% endif %}
+      <td><span class="status {{ r.tone }}"><span class="dot"></span>{% if r.link %}<a href="/requests/{{ r.link }}">{{ r.status }}</a>{% else %}{{ r.status }}{% endif %}</span></td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>

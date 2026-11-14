@@ -135,6 +135,7 @@ class PolicyContext(BaseModel):
     now: datetime
     week_spend_eur: float = 0.0                   # already committed this ISO week
     mandate_signature_valid: bool = True
+    review_reason: str | None = None              # set when the buyer asked to review this kind of order first
 
 
 class PolicyReason(BaseModel):

@@ -6,7 +6,8 @@
 {% set approver = mandate.approver_name if mandate else "the approver" %}
 {% set last_line = run.receipt.split("\n")[-1] if run.receipt else "" %}
 
-<div class="eyebrow">{{ run.buyer_org }}{% if run.requested_by %} · asked by {{ run.requested_by|person }}{% endif %} · {{ run.created_at|when }}</div>
+<div class="eyebrow">{{ run.buyer_org }}{% if run.requested_by %} · asked by {{ run.requested_by|person }}{% elif run.trigger %} · started by the agent{% endif %} · {{ run.created_at|when }}</div>
+{% if run.trigger %}<p class="trigger"><span class="lane-tag buyer">Low stock</span>{{ run.trigger }}. <a href="/">Supplies</a></p>{% endif %}
 <h1>“{{ run.request_text }}”</h1>
 
 <div class="verdict {{ tone }}" id="verdict" data-status="{{ run.status }}">

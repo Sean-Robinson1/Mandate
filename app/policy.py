@@ -419,6 +419,13 @@ def uncertainty_reliability(intent, plan, mandate, ctx):
     )
 
 
+def review_required(intent, plan, mandate, ctx):
+    """The buyer chose 'ask first' for what this request restocks. Can only make the decision stricter."""
+    if not ctx.review_reason:
+        return None
+    return _reason("request.review_required", NEEDS_HUMAN, ctx.review_reason)
+
+
 def unconfirmed_quantity(intent, plan, mandate, ctx) -> bool:
     return any(not l.quantity_confirmed for l in plan.lines)
 
@@ -446,6 +453,7 @@ RULES: list[tuple[str, Rule]] = [
     ("substitution.split", substitution_split),
     ("uncertainty.intent_confidence", uncertainty_intent_confidence),
     ("uncertainty.reliability", uncertainty_reliability),
+    ("request.review_required", review_required),
 ]
 
 # Flagged in `passed` as "<id>:warning"; never changes the decision.
