@@ -26,15 +26,17 @@
     <div class="group {{ 'agent' if g.agent }}">
       <div class="group-head">
         <div><strong>{{ g.supplier }}</strong>{% if g.terms %} <span class="small muted">· {{ g.terms }}</span>{% endif %}</div>
-        {% if g.agent %}<span class="small agent-label">Ordered by the purchasing agent</span>
+        {% if g.agent %}<span class="small agent-label">Ordered through the purchasing agent</span>
         {% else %}<span class="small muted">{{ g.contact }}</span>{% endif %}
       </div>
       {% for r in g.rows %}{% set s = r.supply %}
       <div class="line">
         <div class="line-main">
           <a class="item-link" href="/supplies/{{ s.id }}">{{ s.name }}</a> · {{ r.suggested|qty }} {{ r.unit }}
-          <span class="sub">{% if r.runs_out_on %}Runs out {{ r.runs_out_on|on }}{% else %}Below its reorder level{% endif %}
+          <span class="sub">{{ s.on_hand|qty }} {{ r.unit }} left · {% if r.runs_out_on %}runs out {{ r.runs_out_on|on }}{% else %}below its reorder level{% endif %}
             {%- if s.unit_cost %} · about {{ (r.suggested * s.unit_cost)|eur0 }}{% endif %}</span>
+          {% if r.connected and not r.open_run and s.on_hand >= s.reorder_below and s.rule in ("auto", "ask") %}
+          <span class="sub">Not ordered yet: the agent {{ "orders it by itself" if s.rule == "auto" else "asks " ~ approver }} once it drops below {{ s.reorder_below|qty }} {{ r.unit }}</span>{% endif %}
         </div>
         <div class="line-act">
           {% if r.open_run and r.open_run.status == "NEEDS_HUMAN" %}
@@ -47,9 +49,8 @@
             <a class="status bad" href="/requests/{{ r.last_run.trace_id }}"><span class="dot"></span>Agent didn't order: see why</a>
             <form method="post" action="/supplies/{{ s.id }}/ordered"><button class="btn secondary small-btn">Mark as ordered</button></form>
           {% elif r.connected %}
-            <span class="small muted">{% if s.rule != "off" %}Orders it alone below {{ s.reorder_below|qty }} {{ r.unit }}{% endif %}</span>
             <form method="post" action="/supplies/agent-order"><input type="hidden" name="item" value="{{ s.id }}">
-              <button class="btn secondary small-btn">Order now</button></form>
+              <button class="btn secondary small-btn">Order now via the agent</button></form>
           {% else %}
             <form method="post" action="/supplies/{{ s.id }}/ordered"><button class="btn secondary small-btn">Mark as ordered</button></form>
           {% endif %}
