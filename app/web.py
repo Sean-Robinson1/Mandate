@@ -633,34 +633,29 @@ def menu_page(request: Request, saved: str = "", error: str = ""):
     with SessionLocal() as s:
         day = kitchen.today(s)
         views = menu.dishes(s, me.org_key, today=day)
-        impact = menu.price_impact(s, me.org_key, views) if views else []
-        cheaper = prices.overview(s, me.org_key)["cheaper"] if views else []
     sold = sum(v.sold_week for v in views)
-    cost = sum(v.cost * v.sold_week for v in views)
-    net = sum(v.net_price * v.sold_week for v in views)
     groups = [(label, [v for v in views if v.dish.category == key]) for key, label in menu.CATEGORIES.items()]
-    below = sorted((v for v in views if v.below_target), key=lambda v: v.margin_pct - v.target)
     notice = {"tone": "bad", "text": error} if error else {"tone": "ok", "text": saved} if saved else None
     return page(request, "menu.html", active="menu", groups=[g for g in groups if g[1]], views=views, sold=sold,
-                week_pct=round(100 * cost / net, 1) if net else None, target=menu.FOOD_COST_TARGET, vat=menu.VAT,
-                net_week=round(net, 2), margin_week=round(net - cost, 2), below=below, impact=impact, notice=notice,
-                saving=cheaper[0] if cheaper else None, food_cost_week=round(cost, 2),
+                vat=menu.VAT, below=[v for v in views if v.below_target], notice=notice,
                 can_price=is_manager(me), approver=agent.approver_name(MANDATES[me.org_key]))
 
 
 @app.post("/menu/dishes/{dish_id}/price", include_in_schema=False)
-def set_dish_price(request: Request, dish_id: int, price: str = Form(...)):
+def set_dish_price(request: Request, dish_id: int, price: str = Form(...), back: str = Form("menu")):
     me = current_person(request)
     if not is_manager(me):
         raise HTTPException(403, f"only {agent.approver_name(MANDATES[me.org_key])} can change menu prices")
+    target = "/prices" if back == "prices" else "/menu"           # only these two pages, never a free URL
+    anchor = "#below" if back == "prices" else f"#dish-{dish_id}"
     try:
         with SessionLocal() as s:
             dish, old = menu.set_menu_price(s, me.org_key, dish_id, price, me.id)
     except ValueError as e:
         message = str(e)[:1].upper() + str(e)[1:] + "."
-        return RedirectResponse(f"/menu?{urlencode({'error': message})}#dish-{dish_id}", status_code=303)
+        return RedirectResponse(f"{target}?{urlencode({'error': message})}{anchor}", status_code=303)
     saved = f"{dish.name} now costs {eur(dish.price)} on the menu (was {eur(old)})."
-    return RedirectResponse(f"/menu?{urlencode({'saved': saved})}#dish-{dish_id}", status_code=303)
+    return RedirectResponse(f"{target}?{urlencode({'saved': saved})}{anchor}", status_code=303)
 
 
 @app.get("/costs", include_in_schema=False)
@@ -886,11 +881,33 @@ def retry(request: Request, trace_id: str):
 # ---------------------------------------------------------------- ingredient prices
 
 @app.get("/prices", include_in_schema=False)
-def prices_page(request: Request):
+def prices_page(request: Request, saved: str = "", error: str = ""):
+    """Prices & margins: what ingredients cost, what has moved, what it does to each dish, and where to save."""
     me = current_person(request)
+    ctx: dict = {"margins": None}
     with SessionLocal() as s:
         data = prices.overview(s, me.org_key)
-    return page(request, "prices.html", data=data, approver=agent.approver_name(MANDATES[me.org_key]), active="prices")
+        day = kitchen.today(s)
+        batches = kitchen.use_first(s, me.org_key)
+        price_now = menu.prices(s, [b.supply for b in batches]) if batches else {}
+        views = menu.dishes(s, me.org_key, today=day) if menu.has_menu(me.org_key) else []
+        if views:
+            impact = {a["supply_id"]: a for a in menu.price_impact(s, me.org_key, views)}
+            spend = costs.overview(s, me.org_key).ingredients
+            cost = sum(v.cost * v.sold_week for v in views)
+            net = sum(v.net_price * v.sold_week for v in views)
+            ctx["margins"] = {"net": round(net, 2), "cost": round(cost, 2), "margin": round(net - cost, 2),
+                              "pct": round(100 * cost / net, 1) if net else None, "impact": impact, "spend": spend,
+                              "below": sorted((v for v in views if v.below_target), key=lambda v: v.margin_pct - v.target)}
+    trends = {i["supply_id"]: i["trend"] for i in data["items"]}
+    users = {b.supply.id: [v.dish.name for v in views if any(i.supply.id == b.supply.id for i in v.ingredients)]
+             for b in batches}
+    use_up = [{"batch": b, "value": round(b.quantity * price_now[b.supply.id].per_unit, 2), "dishes": users[b.supply.id]}
+              for b in batches]
+    notice = {"tone": "bad", "text": error} if error else {"tone": "ok", "text": saved} if saved else None
+    return page(request, "prices.html", data=data, approver=agent.approver_name(MANDATES[me.org_key]), active="prices",
+                trends=trends, use_up=use_up, today_day=day, can_price=is_manager(me), notice=notice,
+                target=menu.FOOD_COST_TARGET, **ctx)
 
 
 @app.post("/prices/switch", include_in_schema=False)

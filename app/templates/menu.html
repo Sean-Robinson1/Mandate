@@ -2,75 +2,18 @@
 {% block title %}Menu · Trusted Trade{% endblock %}
 {% block content %}
 <div class="eyebrow">{{ my_org.buyer_org }} · {{ me.name }}, {{ me.role|lower }}</div>
-<div class="page-head"><h1>Menu and margins</h1></div>
-<p class="lede">What each dish costs to make at today's prices, what it earns, and what ingredient price changes do
-  to it. Margins are worked out on the price before VAT.</p>
+<div class="page-head"><h1>Menu</h1><a class="btn secondary" href="/prices">Prices &amp; margins</a></div>
+<p class="lede">Every dish with its recipe, allergens and what it costs to make at today's prices. Margins are
+  worked out on the price before VAT; what price changes do to them is on <a href="/prices">Prices &amp; margins</a>.</p>
 <div class="summary">
   <span>{{ views|length }} dishes</span>
-  {% if week_pct is not none %}
+  {% if sold %}
   <span>{{ sold }} portions sold in the last 7 days</span>
+  {% if below %}<span><a href="/prices#below">{{ below|length }} below their target margin</a></span>{% endif %}
   {% else %}<span>No sales yet: press <strong>Next day</strong> on Supplies to run a day's service</span>{% endif %}
   {% if not can_price %}<span class="muted">Only {{ approver }} can change menu prices</span>{% endif %}
 </div>
 {% if notice %}<div class="notice {{ notice.tone }}" role="status">{{ notice.text }}</div>{% endif %}
-
-{% if week_pct is not none %}
-<div class="kpis first">
-  <div class="tile"><div class="tile-label">Gross margin, last 7 days</div>
-    <div class="tile-value">{{ margin_week|eur0 }}</div>
-    <div class="tile-sub">{{ (100 - week_pct)|round(1) }}% of {{ net_week|eur0 }} sales before VAT</div></div>
-  <div class="tile {{ 'warn' if week_pct > target[1] * 100 }}"><div class="tile-label">Food cost</div>
-    <div class="tile-value">{{ week_pct }}%</div>
-    <div class="tile-sub">{{ food_cost_week|eur0 }} of ingredients · <a href="/costs">with waste →</a></div></div>
-  {% set worst = below[0] if below else none %}
-  <div class="tile {{ 'warn' if worst }}"><div class="tile-label">Most margin pressure</div>
-    {% if worst %}<div class="tile-value tile-date"><a class="item-link" href="#dish-{{ worst.dish.id }}">{{ worst.dish.name }}</a></div>
-    <div class="tile-sub">{{ worst.margin_pct }}% against a {{ worst.target|round|int }}% target · {{ worst.suggested_price|eur }} would reach it</div>
-    {% else %}<div class="tile-value tile-date">None</div><div class="tile-sub">Every dish reaches its target</div>{% endif %}</div>
-  <div class="tile"><div class="tile-label">Biggest saving</div>
-    {% if saving %}<div class="tile-value">{{ saving.saving_week|eur0 }}<span class="fact-unit"> a week</span></div>
-    <div class="tile-sub">{{ saving.supply }}: {{ saving.alt_product|truncate(32) }} at {{ saving.alt_price|eur }}/{{ saving.unit|unit }} · <a href="/prices">Prices →</a></div>
-    {% else %}<div class="tile-value tile-date">None found</div><div class="tile-sub">No cheaper equivalent offered recently</div>{% endif %}</div>
-</div>
-{% endif %}
-
-{% if impact or below %}
-<div class="work menu-insights">
-  <section class="card" aria-labelledby="h-impact">
-    <div class="card-head"><h2 id="h-impact">Price changes and your dishes</h2><a class="small" href="/prices">Prices →</a></div>
-    {% for a in impact[:4] %}
-    <div class="impact">
-      <p class="impact-head"><strong>{{ a.supply }}</strong>
-        <span class="{{ 'bad-text' if a.rising else 'ok-text' }}">{{ "up" if a.rising else "down" }} {{ a.change_pct|abs }}%</span>
-        <span class="muted">{{ a.old_price|eur }} → {{ a.new_price|eur }}/{{ a.unit|unit }} since {{ day_on(a.since_day)|on }}</span></p>
-      <p class="small">{% if a.week %}About {{ a.week|abs|eur0 }} {{ "more" if a.week > 0 else "less" }} a week across {{ a.dishes|length }} dish{{ "es" if a.dishes|length != 1 }}{% else %}Used in {{ a.dishes|length }} dish{{ "es" if a.dishes|length != 1 }}{% endif %}:</p>
-      <ul class="impact-dishes">
-        {% for d in a.dishes[:4] %}<li><a href="#dish-{{ d.id }}">{{ d.dish }}</a> <span class="muted">margin {{ d.before }}% → </span><span class="{{ 'warn-text' if d.below }}">{{ d.after }}%</span></li>{% endfor %}
-      </ul>
-    </div>
-    {% else %}
-    <p class="empty-note">No ingredient in your recipes moved more than 3% in the last two weeks.</p>
-    {% endfor %}
-  </section>
-  <section class="card" aria-labelledby="h-below">
-    <div class="card-head"><h2 id="h-below">Below their target margin</h2><span class="small muted">{{ below|length }} of {{ views|length }}</span></div>
-    {% for v in below[:6] %}
-    <div class="line flush">
-      <div class="line-main"><a class="item-link" href="#dish-{{ v.dish.id }}">{{ v.dish.name }}</a>
-        <span class="sub">Margin {{ v.margin_pct }}%, aim {{ v.target|round|int }}% · {{ v.dish.price|eur }} now</span></div>
-      <div class="line-act">
-        {% if can_price %}
-        <form method="post" action="/menu/dishes/{{ v.dish.id }}/price"><input type="hidden" name="price" value="{{ v.suggested_price }}">
-          <button class="btn secondary small-btn" title="Lowest price that reaches the target margin">Set to {{ v.suggested_price|eur }}</button></form>
-        {% else %}<span class="small">Suggested {{ v.suggested_price|eur }}</span>{% endif %}
-      </div>
-    </div>
-    {% else %}
-    <p class="empty-note">Every dish reaches its target margin.</p>
-    {% endfor %}
-  </section>
-</div>
-{% endif %}
 
 {% for label, items in groups %}
 <section class="card menu-card" aria-labelledby="h-{{ loop.index }}">

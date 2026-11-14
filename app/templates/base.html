@@ -14,10 +14,12 @@
     <div class="brand-sub">{{ my_org.buyer_org }}</div>
     <nav class="nav" aria-label="Main">
       <a href="/" {% if active == "supplies" %}aria-current="page"{% endif %}>Supplies</a>
-      <a href="/prices" {% if active == "prices" %}aria-current="page"{% endif %}>Prices</a>
       {% if has_menu(me.org_key) %}
       <a href="/menu" {% if active == "menu" %}aria-current="page"{% endif %}>Menu</a>
       <a href="/service" {% if active == "service" %}aria-current="page"{% endif %}>Service</a>
+      {% endif %}
+      <a href="/prices" {% if active == "prices" %}aria-current="page"{% endif %}>{{ "Prices &amp; margins"|safe if has_menu(me.org_key) else "Prices" }}</a>
+      {% if has_menu(me.org_key) %}
       <a href="/costs" {% if active == "costs" %}aria-current="page"{% endif %}>Food cost</a>
       {% endif %}
       <a href="/approvals" {% if active == "approvals" %}aria-current="page"{% endif %}>Approvals

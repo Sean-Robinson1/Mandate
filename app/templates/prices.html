@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Ingredient prices · Trusted Trade{% endblock %}
+{% block title %}Prices &amp; margins · Trusted Trade{% endblock %}
 
 {% macro trend_spark(points, label) -%}
 {%- if points and points|length > 1 -%}
@@ -22,15 +22,44 @@
 {%- else %}<span class="muted">–</span>{% endif %}
 {%- endmacro %}
 
+{# Friendly time words: "3 days ago", "tomorrow". The date stays in the tooltip. #}
+{% macro ago(d) -%}
+{%- set n = today_day - d -%}<span title="{{ day_on(d)|on }}">{{ "today" if n <= 0 else ("yesterday" if n == 1 else n ~ " days ago") }}</span>
+{%- endmacro %}
+{% macro within(n, on) -%}
+<span title="{{ on|on }}">{{ "past its date" if n < 0 else ("today" if n == 0 else ("tomorrow" if n == 1 else "in " ~ n ~ " days")) }}</span>
+{%- endmacro %}
+
 {% macro per_unit(value, unit) %}{{ value|eur }}<span class="unit"> / {{ unit|lower }}</span>{% endmacro %}
 
 {% block content %}
 {% set s = data.summary %}
 <div class="eyebrow">{{ my_org.buyer_org }} · {{ me.name }}, {{ me.role|lower }}</div>
-<div class="page-head"><h1>Ingredient prices</h1></div>
-<p class="lede">What each ingredient costs now, what has changed in the last two weeks, and where the same thing is
-  cheaper from Valio Aimo.</p>
+<div class="page-head"><h1>Prices &amp; margins</h1></div>
+<p class="lede">What ingredients cost now, what has moved in the last two weeks{% if margins %}, what that does to each
+  dish's margin{% endif %}, and where the same thing is cheaper from Valio Aimo.</p>
+{% if notice %}<div class="notice {{ notice.tone }}" role="status">{{ notice.text }}</div>{% endif %}
 
+{% if margins and margins.pct is not none %}
+{% set worst = margins.below[0] if margins.below else none %}
+{% set best = data.cheaper[0] if data.cheaper else none %}
+<div class="kpis prices-kpis" aria-label="Summary">
+  <div class="tile"><div class="tile-label">Gross margin, last 7 days</div>
+    <div class="tile-value">{{ margins.margin|eur0 }}</div>
+    <div class="tile-sub">{{ (100 - margins.pct)|round(1) }}% of {{ margins.net|eur0 }} sales before VAT</div></div>
+  <div class="tile {{ 'warn' if margins.pct > target[1] * 100 }}"><div class="tile-label">Food cost</div>
+    <div class="tile-value">{{ margins.pct }}%</div>
+    <div class="tile-sub">{{ margins.cost|eur0 }} of ingredients · <a href="/costs">with waste →</a></div></div>
+  <div class="tile {{ 'warn' if worst }}"><div class="tile-label">Most margin pressure</div>
+    {% if worst %}<div class="tile-value tile-date">{{ worst.dish.name }}</div>
+    <div class="tile-sub">{{ worst.margin_pct }}% against a {{ worst.target|round|int }}% target · {{ worst.suggested_price|eur }} would reach it</div>
+    {% else %}<div class="tile-value tile-date">None</div><div class="tile-sub">Every dish reaches its target</div>{% endif %}</div>
+  <div class="tile"><div class="tile-label">Biggest saving</div>
+    {% if best %}<div class="tile-value">{{ best.saving_week|eur0 }}<span class="unit"> a week</span></div>
+    <div class="tile-sub">{{ best.supply }}: a cheaper equivalent at {{ best.alt_price|eur }}/{{ best.unit|lower }} · <a href="#cheaper-h">see below</a></div>
+    {% else %}<div class="tile-value tile-date">None found</div><div class="tile-sub">No cheaper equivalent offered recently</div>{% endif %}</div>
+</div>
+{% else %}
 <div class="kpis prices-kpis" aria-label="Summary">
   <div class="tile"><div class="tile-label">Spend this week</div><div class="tile-value">{{ s.spend_week|eur }}</div>
     <div class="tile-sub">At current prices and usual use, before VAT</div></div>
@@ -39,29 +68,37 @@
   <div class="tile"><div class="tile-label">Saving available</div><div class="tile-value">{{ s.saving_week|eur }}</div>
     <div class="tile-sub">Per week, by switching to cheaper equivalents</div></div>
   <div class="tile"><div class="tile-label">Prices from signed Valio Aimo offers</div>
-    <div class="tile-value">{{ s.live_prices }}<span class="unit"> of {{ s.items }}</span></div>
+    <div class="tile-value">{{ s.live_prices }}<span class="unit"> of {{ s["items"] }}</span></div>
     <div class="tile-sub">The rest are simulated history or the item's unit cost</div></div>
 </div>
+{% endif %}
 
 <section aria-labelledby="changes-h">
-  <div class="section-head"><h2 id="changes-h">Price changes</h2><span class="muted">Last 14 days, 3% or more</span></div>
+  <div class="section-head"><h2 id="changes-h">Price changes</h2>
+    <span class="muted">Last 14 days, 3% or more · {{ s.rising }} rising · {{ s.live_prices }} of {{ s["items"] }} prices from signed Valio Aimo offers</span></div>
   {% if data.alerts %}
   <div class="table-scroll">
-  <table>
-    <thead><tr><th>Ingredient</th><th>Product</th><th class="num">Was</th><th class="num">Now</th><th class="num">Change</th>
-      <th class="num">Since</th><th class="num">Per week</th></tr></thead>
+  <table class="changes">
+    <thead><tr><th>Ingredient</th><th>Two weeks</th><th class="num">Was</th><th class="num">Now</th><th class="num">Change</th>
+      <th>Since</th><th class="num">Per week</th></tr></thead>
     <tbody>
-    {% for a in data.alerts %}
-      <tr>
-        <td><a class="item-link" href="/supplies/{{ a.supply_id }}">{{ a.supply }}</a></td>
-        <td class="small">{{ a.product }}</td>
+    {% for a in data.alerts %}{% set hit = margins.impact.get(a.supply_id) if margins else none %}
+      <tr class="{{ 'has-dishes' if hit }}">
+        <td><a class="item-link" href="/supplies/{{ a.supply_id }}">{{ a.supply }}</a><span class="sub">{{ a.product }}</span></td>
+        <td>{{ trend_spark(trends.get(a.supply_id), a.supply ~ " price over the last four weeks") }}</td>
         <td class="num">{{ per_unit(a.old_price, a.unit) }}</td>
         <td class="num">{{ per_unit(a.new_price, a.unit) }}</td>
         <td class="num"><span class="status {{ 'bad' if a.rising else 'ok' }}"><span class="dot"></span>{{ "+" if a.rising }}{{ "%.1f"|format(a.change_pct) }}%</span></td>
-        <td class="num small">Day {{ a.since_day }}</td>
+        <td class="small">{{ ago(a.since_day) }}</td>
         <td class="num {{ 'bad-text' if a.rising else 'delivered' }}">{{ "+" if a.weekly_effect > 0 else "−" if a.weekly_effect < 0 }}{{ (a.weekly_effect|abs)|eur }}
           <span class="sub">on {{ a.use_week|qty }} {{ a.unit|lower }} a week</span></td>
       </tr>
+      {% if hit %}
+      <tr class="dish-effect"><td colspan="7">
+        <span class="muted">Margins:</span>
+        {% for d in hit.dishes %}<a href="/menu#dish-{{ d.id }}">{{ d.dish }}</a> {{ d.before }}% → <span class="{{ 'warn-text' if d.below }}">{{ d.after }}%</span>{{ " · " if not loop.last }}{% endfor %}
+      </td></tr>
+      {% endif %}
     {% endfor %}
     </tbody>
   </table>
@@ -70,6 +107,63 @@
   <p class="empty">No ingredient has moved 3% or more in the last two weeks.</p>
   {% endif %}
 </section>
+
+{% if margins %}
+<section aria-labelledby="below-h" id="below">
+  <div class="section-head"><h2 id="below-h">Below their target margin</h2>
+    <span class="muted">{{ margins.below|length }} dish{{ "es" if margins.below|length != 1 }} · targets: starters 72%, mains 70%, desserts 80%, drinks 85%</span></div>
+  {% if margins.below %}
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>Dish</th><th class="num">Menu price</th><th class="num">Cost</th><th class="num">Margin</th><th class="num">Target</th><th></th></tr></thead>
+    <tbody>{% for v in margins.below %}
+      <tr><td><a class="item-link" href="/menu#dish-{{ v.dish.id }}">{{ v.dish.name }}</a>
+          <span class="sub">{{ v.sold_week }} sold in 7 days · earned {{ v.profit_week|eur0 }}</span></td>
+        <td class="num">{{ v.dish.price|eur }}</td><td class="num">{{ v.cost|eur }}</td>
+        <td class="num"><span class="chip warn">{{ v.margin_pct }}%</span></td><td class="num">{{ v.target|round|int }}%</td>
+        <td class="num">{% if can_price %}
+          <form method="post" action="/menu/dishes/{{ v.dish.id }}/price"><input type="hidden" name="price" value="{{ v.suggested_price }}">
+            <input type="hidden" name="back" value="prices">
+            <button class="btn secondary small-btn" title="The lowest menu price that reaches the target margin">Set to {{ v.suggested_price|eur }}</button></form>
+          {% else %}<span class="small">{{ v.suggested_price|eur }} would reach it</span>{% endif %}</td></tr>
+    {% endfor %}</tbody>
+  </table>
+  </div>
+  {% if not can_price %}<p class="small muted sheet-note">Only {{ approver }} can change menu prices.</p>{% endif %}
+  {% else %}
+  <p class="empty">Every dish reaches its target margin.</p>
+  {% endif %}
+</section>
+{% endif %}
+
+<div class="work">
+  <section class="card" aria-labelledby="useup-h">
+    <div class="card-head"><h2 id="useup-h">Use it up</h2><span class="small muted">Closest use-by dates</span></div>
+    {% for u in use_up %}{% set b = u.batch %}
+    <div class="arrival two">
+      <div class="line-main"><a class="item-link" href="/supplies/{{ b.supply.id }}">{{ b.supply.name }}</a> · {{ b.quantity|qty }} {{ b.supply.unit|unit }}
+        <span class="muted">· {{ u.value|eur0 }}</span>
+        {% if u.dishes %}<span class="sub">In {{ u.dishes|join(", ") }}</span>{% endif %}</div>
+      <span class="small {{ 'bad-text' if b.days_left <= 1 else 'warn-text' }}">{{ within(b.days_left, b.best_before) }}</span>
+    </div>
+    {% else %}
+    <p class="empty-note">Nothing close to its use-by date.</p>
+    {% endfor %}
+    {% if use_up and margins %}<p class="small muted gap-top-s">Pushing these dishes today uses the stock before it has to be thrown away.</p>{% endif %}
+  </section>
+  {% if margins %}
+  <section class="card" aria-labelledby="spend-h">
+    <div class="card-head"><h2 id="spend-h">Where the food cost goes</h2><span class="small muted">Last 7 days of dishes sold</span></div>
+    {% for i in margins.spend %}
+    <div class="spend-row">
+      <div class="spend-label"><a class="item-link" href="/supplies/{{ i.supply.id }}">{{ i.supply.name }}</a>
+        <span>{{ trend_spark(trends.get(i.supply.id), i.supply.name ~ " price trend") }} {{ i.spend|eur0 }} <span class="muted">· {{ i.share }}%</span></span></div>
+      <div class="level"><i style="width: {{ i.share }}%"></i></div>
+    </div>
+    {% else %}<p class="empty-note">No dishes sold in the last 7 days.</p>{% endfor %}
+  </section>
+  {% endif %}
+</div>
 
 <section aria-labelledby="cheaper-h">
   <div class="section-head"><h2 id="cheaper-h">Cheaper equivalents</h2><span class="muted">Same item, lower price per litre or kg</span></div>
@@ -110,7 +204,7 @@
 </section>
 
 <section aria-labelledby="all-h">
-  <div class="section-head"><h2 id="all-h">All prices</h2><span class="muted">Day {{ data.day }} · most spend first</span></div>
+  <div class="section-head"><h2 id="all-h">All prices</h2><span class="muted">Most spend first</span></div>
   {% if data["items"] %}
   <div class="table-scroll">
   <table class="prices-all">
@@ -144,5 +238,6 @@
   document.querySelectorAll(".switch-form").forEach(f => f.addEventListener("submit", () => {
     const b = f.querySelector("button"); b.disabled = true; b.textContent = "Sending to the agent…";
   }));
+  if (location.search) history.replaceState(null, "", "/prices" + location.hash);
 </script>
 {% endblock %}
