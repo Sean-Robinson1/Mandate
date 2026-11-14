@@ -391,10 +391,8 @@ def _dashboard(me) -> dict:
 
 @app.get("/", include_in_schema=False)
 def home(request: Request, imported: int | None = None, unknown: str = "", invalid: str = "", error: str = "",
-         done: str = "", text: str = "", delivered: int | None = None, started: int | None = None):
+         done: str = "", text: str = "", delivered: int | None = None, started: int | None = None, q: str = ""):
     me = current_person(request)
-    if text:                                       # "ask again": the request box lives on Activity now
-        return RedirectResponse("/activity?" + urlencode({"text": text[:1000]}) + "#request-form", status_code=303)
     notice = None
     if error:
         notice = {"tone": "bad", "text": error}
@@ -412,7 +410,26 @@ def home(request: Request, imported: int | None = None, unknown: str = "", inval
                  f"the agent started {started} order{'' if started == 1 else 's'}" if started else None]
         msg = "; ".join(p for p in parts if p)
         notice = {"tone": "ok", "text": "A day passed" + (f": {msg}." if msg else ". Nothing needed ordering.")}
-    return page(request, "home.html", active="supplies", notice=notice, **_dashboard(me))
+    return page(request, "home.html", active="supplies", notice=notice, examples=EXAMPLES, prefill=text[:1000],
+                search=catalog_search(q), **_dashboard(me))
+
+
+SEARCH_SHOWN = 8
+
+
+def catalog_search(q: str) -> dict | None:
+    """A person's own keyword search, like Valio Aimo's webshop: names containing every word, nothing checked.
+
+    Shown next to the agent so the difference is visible: here the person still has to judge every result.
+    """
+    q = " ".join(q.split())[:80]
+    if len(q) < 2:
+        return None
+    try:
+        found = GATEWAY.search(q.split(), None, [], [], [])
+    except GatewayError as e:
+        return {"q": q, "error": f"The catalog could not be searched just now ({e})."}
+    return {"q": q, "products": found.products[:SEARCH_SHOWN], "total": len(found.products) + found.not_returned}
 
 
 @app.get("/supplies/sheet", include_in_schema=False)
@@ -968,11 +985,12 @@ def approvals(request: Request):
 @app.get("/activity", include_in_schema=False)
 def activity(request: Request):
     me = current_person(request)
+    if text := request.query_params.get("text", ""):        # old "ask again" links: the box is on Supplies now
+        return RedirectResponse("/?" + urlencode({"text": text[:1000]}) + "#ask", status_code=303)
     with SessionLocal() as s:
         rows = s.scalars(select(Run).where(Run.mandate_id == my_mandate_id(me))
                          .order_by(Run.created_at.desc()).limit(200)).all()
-    return page(request, "activity.html", rows=rows, examples=EXAMPLES, active="activity",
-                prefill=request.query_params.get("text", "")[:1000])
+    return page(request, "activity.html", rows=rows, active="activity")
 
 
 @app.get("/mandates", include_in_schema=False)

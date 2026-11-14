@@ -42,6 +42,78 @@
 </div>
 {% if notice %}<div class="notice {{ notice.tone }}" role="status">{{ notice.text }}</div>{% endif %}
 
+<section class="card ask-card" id="ask" aria-label="Find and order something">
+  <div class="tabs" role="tablist">
+    <button type="button" class="tab" role="tab" id="tab-agent" aria-controls="panel-agent" data-mode="agent" aria-selected="{{ 'false' if search else 'true' }}">Ask the agent</button>
+    <button type="button" class="tab" role="tab" id="tab-search" aria-controls="panel-search" data-mode="search" aria-selected="{{ 'true' if search else 'false' }}">Search the catalog yourself</button>
+  </div>
+
+  <div id="panel-agent" role="tabpanel" aria-labelledby="tab-agent" {% if search %}hidden{% endif %}>
+    <form class="stack" method="post" action="/requests" id="request-form">
+      <label for="text" class="sr-only">Ask the agent for something</label>
+      <textarea id="text" name="text" required placeholder="I need 1,000 litres of lactose-free milk by Monday.">{{ prefill or "" }}</textarea>
+      <div class="form-foot">
+        <button class="btn" type="submit" id="submit">Send to the agent</button>
+        <span class="small muted">It finds the product, checks allergens, gets a price signed by Valio Aimo and orders up to
+          {{ my_org.limits.per_order_auto_eur|eur }} alone; above that, {{ my_org.approver_name }} decides.
+          <a href="/rules">Purchasing rules</a></span>
+      </div>
+    </form>
+    <details class="examples-box">
+      <summary class="small">Example requests</summary>
+      <ul class="examples">
+        {% for kind, ex in examples %}
+        <li><button type="button" data-example="{{ ex }}"><span class="ex-kind">{{ kind }}</span><span class="ex-text">{{ ex }}</span></button></li>
+        {% endfor %}
+      </ul>
+    </details>
+  </div>
+
+  <div id="panel-search" role="tabpanel" aria-labelledby="tab-search" {% if not search %}hidden{% endif %}>
+    <form method="get" action="/#ask" class="search-form" role="search">
+      <label for="q" class="sr-only">Search Valio Aimo's catalog</label>
+      <input type="search" id="q" name="q" value="{{ search.q if search else '' }}" placeholder="lactose free milk" minlength="2" maxlength="80" required>
+      <button class="btn secondary">Search</button>
+    </form>
+    <p class="small muted">A plain keyword search, like a webshop: products whose name contains every word, in catalog
+      order. Nothing is checked for you.</p>
+    {% if search and search.error %}
+      <div class="notice bad" role="status">{{ search.error }}</div>
+    {% elif search %}
+      <p class="small search-count">{{ search.total }} product{{ "s" if search.total != 1 }} match “{{ search.q }}”{% if search.total > search.products|length %}, showing the first {{ search.products|length }}{% endif %}.</p>
+      {% if search.products %}
+      <div class="still-on-you">
+        <strong>Ordering from this list, you still check yourself:</strong>
+        <ul>
+          <li>that it is really the product you need</li>
+          <li>allergens against your rules</li>
+          <li>today's price and stock</li>
+          <li>whether it arrives in time</li>
+          <li>whether the order is within your purchasing rules</li>
+        </ul>
+        <span class="small muted">The agent does each of these and keeps a signed record.</span>
+      </div>
+      <div class="table-scroll">
+      <table class="tight search-results">
+        <thead><tr><th>Product</th><th>Claims</th><th>Contains</th><th class="num">On time</th><th><span class="sr-only">Action</span></th></tr></thead>
+        <tbody>
+        {% for p in search.products %}
+          <tr>
+            <td><a href="/products/{{ p.product_id }}">{{ p.name }}</a><span class="sub">{{ p.brand or p.vendor|title }} · product {{ p.product_id }}</span></td>
+            <td>{% for c in p.claims[:3] %}<span class="chip ok">{{ c|claim }}</span> {% else %}<span class="muted">–</span>{% endfor %}</td>
+            <td class="small">{% if not p.has_allergen_data %}<span class="bad-text">No data</span>{% elif p.contains %}{% for a in p.contains %}{{ ALLERGEN_NAMES.get(a, a)|capitalize }}{{ ", " if not loop.last }}{% endfor %}{% else %}None listed{% endif %}</td>
+            <td class="num small">{% if p.reliability is not none %}{{ (p.reliability * 100)|round|int }}%{% else %}–{% endif %}</td>
+            <td class="nowrap"><button type="button" class="chip-btn" data-ask="{{ p.name }}">Ask the agent to order this</button></td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      {% endif %}
+    {% endif %}
+  </div>
+</section>
+
 <div id="board">{% include "_board.html" %}</div>
 {% endblock %}
 {% block script %}
@@ -114,6 +186,32 @@
   document.getElementById("day-form").addEventListener("submit", () => {
     const btn = document.getElementById("day-btn"); btn.disabled = true; btn.textContent = "Next day…";
   });
-  if (location.search) history.replaceState(null, "", "/");   // a reload should not repeat the notice
+  {   // a reload should not repeat the notice, but should keep the search
+    const q = new URLSearchParams(location.search).get("q");
+    if (location.search) history.replaceState(null, "", q ? "/?" + new URLSearchParams({q}) + "#ask" : "/");
+  }
+
+  {   // Ask the agent | Search the catalog yourself
+    const box = document.getElementById("text"), form = document.getElementById("request-form");
+    const tabs = document.querySelectorAll("[data-mode]");
+    function mode(key) {
+      tabs.forEach(t => {
+        t.setAttribute("aria-selected", t.dataset.mode === key);
+        document.getElementById(t.getAttribute("aria-controls")).hidden = t.dataset.mode !== key;
+      });
+    }
+    tabs.forEach(t => t.addEventListener("click", () => mode(t.dataset.mode)));
+    document.querySelectorAll("[data-example]").forEach(b => b.addEventListener("click", () => { box.value = b.dataset.example; box.focus(); }));
+    document.querySelectorAll("[data-ask]").forEach(b => b.addEventListener("click", () => {
+      box.value = `I need  of ${b.dataset.ask} by Monday.`;
+      mode("agent");
+      box.focus(); box.setSelectionRange(7, 7);       // the cursor waits where the quantity goes
+    }));
+    box.addEventListener("keydown", e => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) form.requestSubmit(); });
+    if (box.value) { box.focus(); box.setSelectionRange(box.value.length, box.value.length); }
+    form.addEventListener("submit", () => {
+      const btn = document.getElementById("submit"); btn.disabled = true; btn.textContent = "Sending…";
+    });
+  }
 </script>
 {% endblock %}

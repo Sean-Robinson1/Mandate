@@ -1,41 +1,13 @@
 {% extends "base.html" %}
 {% block title %}Activity · Trusted Trade{% endblock %}
 {% block content %}
-<h1>Activity</h1>
+<div class="page-head">
+  <h1>Activity</h1>
+  <div class="head-actions"><a class="btn secondary" href="/#ask">Ask the agent on Supplies</a></div>
+</div>
 <p class="lede">Every request the agent has handled for {{ my_org.buyer_org }}, whatever the outcome.</p>
-
-<section class="card ask-card" style="margin-top:24px">
-  <form class="stack" method="post" action="/requests" id="request-form">
-    <label for="text" class="field-label">Ask the agent for something</label>
-    <textarea id="text" name="text" required placeholder="I need 1,000 litres of lactose-free milk by Monday.">{{ prefill or "" }}</textarea>
-    <div class="form-foot">
-      <button class="btn" type="submit" id="submit">Send to the agent</button>
-      <span class="small muted">It may order up to {{ my_org.limits.per_order_auto_eur|eur }} alone; above that, {{ my_org.approver_name }} decides.
-        <a href="/rules">Purchasing rules</a></span>
-    </div>
-  </form>
-  <details class="examples-box">
-    <summary class="small">Example requests</summary>
-    <ul class="examples">
-      {% for kind, text in examples %}
-      <li><button type="button" data-example="{{ text }}"><span class="ex-kind">{{ kind }}</span><span class="ex-text">{{ text }}</span></button></li>
-      {% endfor %}
-    </ul>
-  </details>
-</section>
 
 <section style="margin-top:28px">
   {% with empty_text = "No requests yet." %}{% include "_runs_table.html" %}{% endwith %}
 </section>
-{% endblock %}
-{% block script %}
-<script>
-  const box = document.getElementById("text");
-  document.querySelectorAll("[data-example]").forEach(b => b.addEventListener("click", () => { box.value = b.dataset.example; box.focus(); }));
-  box.addEventListener("keydown", e => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) document.getElementById("request-form").requestSubmit(); });
-  if (location.search.includes("text=")) { box.focus(); box.setSelectionRange(box.value.length, box.value.length); }
-  document.getElementById("request-form").addEventListener("submit", () => {
-    const btn = document.getElementById("submit"); btn.disabled = true; btn.textContent = "Sending…";
-  });
-</script>
 {% endblock %}

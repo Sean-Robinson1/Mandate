@@ -577,6 +577,16 @@ code { font: 12px var(--mono); background: var(--accent-2); padding: 1px 4px; bo
 .chip.ok { background: var(--ok-bg); color: var(--ok); } .chip.warn { background: var(--warn-bg); color: var(--warn); }
 .chip.bad { background: var(--bad-bg); color: var(--bad); } .chip.busy { background: var(--accent-2); color: var(--accent); }
 .ask-card textarea { min-height: 80px; }
+/* Supplies: ask the agent, or search the catalog yourself */
+section.ask-card { margin-top: 20px; }
+.ask-card .tabs { margin-bottom: 12px; }
+.search-form { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.search-form input[type="search"] { flex: 1 1 260px; font: inherit; padding: 9px 12px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); color: var(--ink); }
+.search-form input[type="search"]:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: transparent; }
+.search-count { margin: 14px 0 6px; font-weight: 600; }
+.search-results .chip { display: inline-block; margin: 1px 0; }
+.still-on-you { margin: 4px 0 10px; padding: 12px 14px; border-radius: 8px; background: var(--warn-bg); font-size: 13.5px; }
+.still-on-you ul { margin: 6px 0 6px 18px; padding: 0; display: flex; flex-wrap: wrap; gap: 2px 28px; }
 @media (max-width: 960px) { .work { grid-template-columns: minmax(0, 1fr); } }
 .work section.card, .side-col section.card { margin-top: 0; }
 section.stock-card { margin-top: 20px; }
