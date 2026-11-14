@@ -240,10 +240,24 @@ def test_agent_order_from_dashboard_only_for_gateway_suppliers(sheet_db):
 
 def test_agent_suggests_one_delivery_for_items_due_soon(sheet_db):
     [sg] = kitchen.suggestions(list(rows(sheet_db).values()))
-    assert sg.supplier == "Valio Aimo" and len(sg.rows) >= 2 and "one Valio Aimo delivery" in sg.text
+    assert sg.supplier == "Valio Aimo" and len(sg.rows) >= 2 and "in one delivery" in sg.body
+    assert sg.title.endswith("run low this week")
 
 
 def test_mark_ordered_takes_a_typed_quantity(sheet_db):
     with sheet_db.buyer_db() as s:
         d = kitchen.mark_ordered(s, "hotel", supply(sheet_db, "Coffee beans").id, "test", "15")
     assert d.quantity == 15
+
+
+def test_reset_starts_the_simulation_again(sheet_db):
+    from app.db import wipe
+    with sheet_db.buyer_db() as s:
+        kitchen.next_day(s)
+        bind = s.get_bind()
+    wipe(bind)
+    with sheet_db.buyer_db() as s:
+        assert s.scalar(select(Supply.id)) is None
+        kitchen.seed(s, start=NOW.date())
+        assert kitchen.today(s) == 1
+    assert supply(sheet_db, "Lactose-free milk").on_hand == 760

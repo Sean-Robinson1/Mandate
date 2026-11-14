@@ -23,7 +23,7 @@ from sqlalchemy import func, select
 import settings as config
 from app import agent, charts, keys, kitchen, policy, rules
 from app.audit import AuditEvent, append_event, event_to_dict, events_for_trace, lock_chain, verify_chain
-from app.db import Order, Run, SessionLocal, Step, init_db
+from app.db import Order, Run, SessionLocal, Step, init_db, wipe
 from app.gateway_client import GatewayClient, GatewayError
 from app.llm import get_llm
 from app.mandates import PEOPLE
@@ -320,7 +320,7 @@ def _dashboard(me) -> dict:
             "headline": _headline(groups, upcoming, approver), "approver": approver,
             "stock_value": sum(r.value for r in rows), "on_order_value": sum(i.value for i in upcoming),
             "manager": is_manager(me), "busy": any(r.tone == "busy" for r in rows),
-            "suggestions": kitchen.suggestions(rows), "waiting": waiting,
+            "suggestions": kitchen.suggestions(rows, day), "waiting": waiting,
             "waiting_total": sum(r.total_net or 0 for r in waiting), "can_approve": me.id == mandate.approver}
 
 
@@ -526,6 +526,18 @@ async def edit_supply(request: Request, supply_id: int):
     return JSONResponse({"ok": True})
 
 
+@app.post("/demo/reset", include_in_schema=False)
+def reset_demo(confirm: str = Form("")):
+    """Start the simulation again from day 1. Needs the confirm field so a stray request cannot wipe the demo."""
+    if confirm != "reset":
+        raise HTTPException(400, "confirm the reset")
+    with _restock_lock:
+        wipe()
+        with SessionLocal() as s:
+            kitchen.seed(s)
+    return _back(done="The demo started again: day 1, fresh stock, no requests or orders. Purchasing rules are unchanged.")
+
+
 @app.post("/kitchen/next-day", include_in_schema=False)
 def next_day():
     with SessionLocal() as s:
@@ -633,6 +645,35 @@ def decision(request: Request, trace_id: str, action: str = Form(...), note: str
         except ValueError as e:
             raise HTTPException(409, str(e))
     return RedirectResponse(f"/requests/{trace_id}", status_code=303)
+
+
+@app.post("/requests/{trace_id}/revise", include_in_schema=False)
+def revise(request: Request, trace_id: str, text: str = Form(...)):
+    """The approver sends a pending request back with changes: the old one is declined (signed, with the new
+    wording as the note) and the agent starts over on the changed request, under the same rules."""
+    me = current_person(request)
+    text = text.strip()[:1000]
+    if not text:
+        raise HTTPException(400, "write the changed request")
+    with SessionLocal() as s:
+        row = s.get(Run, trace_id)
+        if row is None:
+            raise HTTPException(404, "request not found")
+        mandate = MANDATE_BY_ID.get(row.mandate_id)
+        if mandate is None:
+            raise HTTPException(409, f"mandate {row.mandate_id} is not loaded")
+        if me.id != mandate.approver:
+            raise HTTPException(403, f"only {agent.approver_name(mandate)} can send this back")
+        try:
+            agent.decide(s, trace_id, mandate, approve=False, gateway=GATEWAY, note=f"Sent back to the agent: {text}")
+        except ValueError as e:
+            raise HTTPException(409, str(e))
+        supply = s.get(kitchen.Supply, row.supply_id) if row.supply_id else None
+        reason = kitchen.review_reason(supply)
+        new_id = agent.open_run(s, text, mandate, requested_by=me.id, supply_id=row.supply_id,
+                                trigger=f"Sent back with changes by {me.name}")
+    threading.Thread(target=_work, args=(new_id, text, mandate, reason), daemon=True).start()
+    return RedirectResponse(f"/requests/{new_id}", status_code=303)
 
 
 @app.get("/approvals", include_in_schema=False)

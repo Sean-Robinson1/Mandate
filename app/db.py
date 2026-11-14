@@ -179,6 +179,14 @@ def _add_missing_columns(bind) -> None:
                 conn.execute(text(ddl))
 
 
+def wipe(bind=None):
+    """Drop and recreate the buyer's tables: the demo's 'start again'. Mandates (files) are not touched."""
+    import app.audit  # noqa: F401
+    bind = bind or engine
+    Base.metadata.drop_all(bind)
+    Base.metadata.create_all(bind)
+
+
 def init_db(bind=None):
     import app.audit  # noqa: F401  registers the audit tables on Base.metadata
 

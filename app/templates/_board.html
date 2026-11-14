@@ -1,16 +1,26 @@
+{% for sg in suggestions %}
+<form method="post" action="/supplies/agent-order" class="agent-suggestion" data-suggestion="{{ sg.supplier }}-{{ sg.rows|map(attribute='supply.id')|join('-') }}">
+  <div class="as-mark" aria-hidden="true">
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg>
+  </div>
+  <div class="as-main">
+    <div class="as-from">Purchasing agent suggests</div>
+    <p class="as-title">{{ sg.title }}</p>
+    <p class="as-body">{{ sg.body }}</p>
+    <ul class="as-items">
+      {% for r in sg.rows %}<li><input type="hidden" name="item" value="{{ r.supply.id }}"><strong>{{ r.suggested|qty }} {{ r.unit }}</strong> {{ r.supply.name|lower }}</li>{% endfor %}
+    </ul>
+  </div>
+  <div class="as-actions">
+    <button class="btn">Order {{ "all" if sg.rows|length > 1 else (sg.rows[0].suggested|qty ~ " " ~ sg.rows[0].unit) }}</button>
+    <button type="button" class="btn ghost" data-dismiss>Not now</button>
+    <span class="as-note">Checked against your purchasing rules before it is sent</span>
+  </div>
+</form>
+{% endfor %}
 <div class="work">
   <section class="card" aria-labelledby="h-order">
     <div class="card-head"><h2 id="h-order">To order</h2><span class="muted small">Topped up to each item's level</span></div>
-    {% for sg in suggestions %}
-    <form method="post" action="/supplies/agent-order" class="suggest">
-      <div class="suggest-text"><span class="suggest-tag">Suggested by the purchasing agent</span>
-        <p>{{ sg.text }}</p>
-        <span class="small muted">{% for r in sg.rows %}{{ r.suggested|qty }} {{ r.unit }} {{ r.supply.name|lower }}{{ ", " if not loop.last }}{% endfor %}
-          {%- if sg.total %} · about {{ sg.total|eur0 }}{% endif %} · checked against the purchasing rules before it is sent</span></div>
-      {% for r in sg.rows %}<input type="hidden" name="item" value="{{ r.supply.id }}">{% endfor %}
-      <button class="btn">Let the agent order {{ "these" if sg.rows|length > 1 else "it" }}</button>
-    </form>
-    {% endfor %}
     {% for g in groups %}
     <div class="group {{ 'agent' if g.agent }}">
       <div class="group-head">

@@ -22,6 +22,16 @@
     <form method="post" action="/kitchen/next-day">
       <button class="btn secondary" title="Demo: use a day of stock and let the agent react">Next day</button>
     </form>
+    <details class="menu">
+      <summary class="btn secondary" title="Demo: start the simulation again">Reset demo</summary>
+      <form method="post" action="/demo/reset" class="menu-panel">
+        <strong>Start the demo again?</strong>
+        <span class="small muted">Stock goes back to day 1 with fresh history. Requests, orders, deliveries and the
+          audit log are cleared. The signed purchasing rules stay as they are.</span>
+        <input type="hidden" name="confirm" value="reset">
+        <button class="btn danger">Reset to day 1</button>
+      </form>
+    </details>
   </div>
 </div>
 <p class="headline" id="headline">{{ headline }}</p>
@@ -44,6 +54,22 @@
     board.querySelectorAll("[data-tab]").forEach(t => t.setAttribute("aria-selected", t.dataset.tab === key));
     board.querySelectorAll("tr[data-area]").forEach(r => r.hidden = key !== "all" && r.dataset.area !== key);
   }
+  function hideDismissed() {
+    let gone = [];
+    try { gone = JSON.parse(sessionStorage.getItem("dismissed") || "[]"); } catch (e) {}
+    board.querySelectorAll("[data-suggestion]").forEach(f => f.hidden = gone.includes(f.dataset.suggestion));
+  }
+  hideDismissed();
+  board.addEventListener("click", e => {
+    const b = e.target.closest("[data-dismiss]");
+    if (!b) return;
+    const f = b.closest("[data-suggestion]");
+    f.hidden = true;
+    try {
+      const gone = JSON.parse(sessionStorage.getItem("dismissed") || "[]");
+      sessionStorage.setItem("dismissed", JSON.stringify([...gone, f.dataset.suggestion]));
+    } catch (e) {}
+  });
   function counting() { return board.querySelector(".stock.counting") !== null; }
   function progress() {
     const inputs = [...board.querySelectorAll(".count-input")];
@@ -72,6 +98,7 @@
       board.innerHTML = data.board;
       headline.textContent = data.headline;
       showArea(area);
+      hideDismissed();
     } catch (e) { /* try again on the next tick */ }
   }
   setInterval(refresh, 3000);

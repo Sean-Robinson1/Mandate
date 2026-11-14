@@ -441,6 +441,13 @@ def restock_text(supply: Supply, quantity: float, on: date | None = None) -> str
     return f"Restock {quantity:,g} {UNIT_WORDS.get(supply.unit, supply.unit)} of {supply.ask_as} by {by:%A}"
 
 
+def review_reason(supply: Supply | None) -> str | None:
+    """Items the kitchen set to 'ask first' always go to the purchasing manager."""
+    if supply is None or supply.rule != "ask":
+        return None
+    return f"The kitchen set {supply.name.lower()} to 'ask first', so ordering it needs approval."
+
+
 def due_restocks(session: Session, org_key: str) -> list[Restock]:
     """Items the agent reorders that are below their level, with nothing already on the way or being decided."""
     out = []
@@ -655,27 +662,41 @@ class Suggestion:
     supplier: str
     rows: list[Row]
     total: float
-    text: str
+    title: str
+    body: str
 
 
-def suggestions(rows: list[Row]) -> list[Suggestion]:
+def _when(row: Row, today_day: int) -> str:
+    if row.runs_out_on is None:
+        return "is below its reorder level"
+    days = row.runs_out_day - today_day
+    return "runs out tomorrow" if days <= 1 else f"runs out on {row.runs_out_on:%A}" if days < 7 else \
+        f"runs out on {row.runs_out_on.day} {row.runs_out_on:%B}"
+
+
+def suggestions(rows: list[Row], today_day: int | None = None) -> list[Suggestion]:
     """Deterministic: items the agent can order that are due soon and not yet low enough for it to act alone."""
     out = []
     for g in to_order(rows):
-        ready = [r for r in g.rows if r.connected and not r.open_run and r.suggested > 0]
+        ready = sorted((r for r in g.rows if r.connected and not r.open_run and r.suggested > 0),
+                       key=lambda r: r.runs_out_day or 999)
         if not ready:
             continue
+        first = ready[0]
+        day = today_day if today_day is not None else (first.forecast[0][0] if first.forecast else 0)
         total = sum(r.suggested * (r.supply.unit_cost or 0) for r in ready)
-        first = min(ready, key=lambda r: r.runs_out_day or 999)
-        names = [r.supply.name.lower() for r in ready]
-        listed = names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
-        d = first.runs_out_on
-        why = f"{first.supply.name} runs out {d:%a} {d.day} {d:%b}" if d else \
-              f"{first.supply.name} is below its reorder level"
-        text = (f"Order {listed} now, in one {g.supplier} delivery. {why}, and {g.supplier} needs "
-                f"{lead_days(first.supply)} days.") if len(ready) > 1 else \
-               f"Order {listed} now. {why}, and {g.supplier} needs {lead_days(first.supply)} days."
-        out.append(Suggestion(g.supplier, ready, total, text))
+        lead = lead_days(first.supply)
+        cost = f" (about €{total:,.0f})" if total else ""
+        if len(ready) == 1:
+            title = f"{first.supply.name} {_when(first, day)}"
+            body = f"{g.supplier} needs {lead} days to deliver, so now is the time. I can order " \
+                   f"{first.suggested:,g} {first.unit}{cost}."
+        else:
+            names = [r.supply.name for r in ready]
+            title = f"{', '.join(names[:-1])} and {names[-1].lower()} run low this week"
+            body = f"They all come from {g.supplier}. I can order them together in one delivery{cost}; " \
+                   f"{first.supply.name.lower()} {_when(first, day)}."
+        out.append(Suggestion(g.supplier, ready, total, title, body))
     return out
 
 

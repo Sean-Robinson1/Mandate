@@ -61,6 +61,14 @@
       <button class="btn secondary" name="action" value="decline">Decline</button>
     </form>
     <p class="small muted" style="margin-top:10px">Your decision is signed with your key. Valio Aimo checks that signature before it accepts the order.</p>
+    <details class="revise" {% if reopened %}open{% endif %}>
+      <summary>Send it back to the agent with changes</summary>
+      <form method="post" action="/requests/{{ run.trace_id }}/revise" class="stack revise-form" id="revise-form">
+        <label for="revise-text" class="small muted">Edit the request itself: change the amount, the brand or the delivery day in the text. The agent plans it again and checks it against the purchasing rules; nothing is ordered until it passes.</label>
+        <textarea id="revise-text" name="text" required>{{ run.request_text }}</textarea>
+        <div><button class="btn secondary">Send back to the agent</button></div>
+      </form>
+    </details>
     {% else %}
     <p class="small muted" style="margin-top:14px">Only {{ approver }} can approve this. To try it, sign in as {{ approver }} in the sidebar.</p>
     {% endif %}
@@ -196,6 +204,9 @@
     hidden.type = "hidden"; hidden.name = "action"; hidden.value = e.submitter ? e.submitter.value : "approve";
     form.appendChild(hidden);
     if (e.submitter) e.submitter.textContent = e.submitter.value === "approve" ? "Ordering…" : "Declining…";
+  });
+  document.getElementById("revise-form")?.addEventListener("submit", e => {
+    const b = e.target.querySelector("button:not([type])"); if (b) { b.disabled = true; b.textContent = "Sending…"; }
   });
 </script>
 {% endblock %}
