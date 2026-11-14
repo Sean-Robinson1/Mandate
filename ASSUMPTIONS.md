@@ -56,9 +56,17 @@ Each entry: what we assumed, why, and what would replace it in production.
     come from the kitchen's declaration for each item, plus Valio Aimo's product data for what it delivered.
 10l. **The restaurant starts with two weeks of past services and waste**, simulated the same way as a live day,
     so the menu, service and food cost pages have a history on day one. They add sales and waste records only;
-    the seeded stock history is unchanged. After each live service a closing check bins stock past its use-by
-    date and logs a little over-prepared food (2–5% of one or two items' use). Production: the till's sales export
-    and the kitchen's own waste log.
+    the seeded stock history is unchanged. The past waste is deliberately high (about 7% of the food bought; real
+    restaurants waste 4–10%) and has a pattern to find: the line preps for a normal day, so quiet days (Sun–Tue)
+    end with food left over; salmon bought for the weekend goes past its date early in the week; bread, salad and
+    herbs expire in small amounts; and three bad days with a clear cause (a warm fridge, a dropped tray, a
+    cancelled group). After each live service a closing check bins stock past its use-by date and logs
+    over-prepared food the same way (more on quiet days). Production: the till's sales export and the kitchen's
+    own waste log.
+10p. **Waste is recorded outside this app**, on the crew's waste log on the line (a tablet or paper sheet) and by
+    the closing check; the Food cost page only reads and analyses it, and has no entry form. "A well-run kitchen"
+    on that page means 4% of the food bought thrown away. "Food bought" there is the recipe cost of dishes sold
+    plus the waste, not purchase invoices.
 10n. **Each course has a target gross margin** (starters 72%, mains 70%, desserts 80%, drinks 85%), so drinks and
     desserts carry more margin than mains, as on real menus. A dish below its target gets the lowest menu price
     that reaches it, rounded up to €0.50. Only the approver named in the mandate (the owner) can change a menu

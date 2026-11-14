@@ -773,10 +773,22 @@ table.tight td { padding: 7px 16px 7px 0; border-bottom: 1px solid var(--line); 
 table.tight tbody tr:last-child td { border-bottom: 0; }
 .spend-row { margin-bottom: 12px; }
 .spend-label { display: flex; justify-content: space-between; gap: 8px; font-size: 13.5px; margin-bottom: 5px; }
-.waste-form { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1.5fr) minmax(0, 2fr) auto; gap: 10px; align-items: end; margin-bottom: 10px; }
-.waste-form label { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.waste-form select, .waste-form input { border: 1px solid var(--line-strong); border-radius: 8px; padding: 8px 10px; background: var(--surface); min-width: 0; }
-@media (max-width: 960px) { .waste-form { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .waste-form .btn { justify-self: start; } }
+.tile-unit { font-size: 15px; font-weight: 500; letter-spacing: 0; }
+.findings { list-style: none; margin: 0 0 6px; padding: 12px 14px; background: var(--bad-bg); border: 1px solid var(--bad-line);
+  border-radius: 8px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; color: var(--ink); }
+.findings li { padding-left: 16px; position: relative; max-width: 100ch; }
+.findings li::before { content: ""; position: absolute; left: 0; top: 0.55em; width: 7px; height: 7px; border-radius: 50%; background: var(--bad); }
+.wc { margin-top: 6px; }
+.wc-bar .mark { fill: var(--bad); opacity: .45; }
+.wc-bar.quiet .mark { opacity: .9; }
+.wc-bar .hit { fill: transparent; }
+.wc-bar:hover .mark { opacity: 1; }
+.wc-good { stroke: var(--ok); stroke-width: 1.5; stroke-dasharray: 5 4; }
+.key-quiet, .key-busy, .key-good { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: -1px; margin-left: 8px; }
+.key-quiet { background: var(--bad); opacity: .9; margin-left: 0; } .key-busy { background: var(--bad); opacity: .45; }
+.key-good { height: 0; border-top: 2px dashed var(--ok); border-radius: 0; vertical-align: 3px; }
+.level.waste { background: var(--bad-bg); } .level.waste i { background: var(--bad); opacity: .8; }
+.work.tight-top { margin-top: 8px; }
 @media (max-width: 560px) { .fc-row { grid-template-columns: 72px minmax(0, 1fr) 48px; } .fc-sales { display: none; } }
 
 /* ---------- menu and margins ---------- */

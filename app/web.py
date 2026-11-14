@@ -707,30 +707,14 @@ def start_special(request: Request, dish_id: int = Form(...), pct: float = Form(
 
 
 @app.get("/costs", include_in_schema=False)
-def costs_page(request: Request, logged: str = "", error: str = ""):
+def costs_page(request: Request):
     me = current_person(request)
     if not menu.has_menu(me.org_key):
         raise HTTPException(404, "this kitchen has no menu")
     with SessionLocal() as s:
-        o = costs.overview(s, me.org_key)
-    notice = {"tone": "bad", "text": error} if error else {"tone": "ok", "text": logged} if logged else None
-    return page(request, "costs.html", active="costs", o=o, reasons=costs.REASONS, notice=notice,
+        o = costs.overview(s, me.org_key, period=costs.PAGE_DAYS)
+    return page(request, "costs.html", active="costs", o=o, period=costs.PAGE_DAYS, reasons=costs.REASONS,
                 closing=costs.CLOSING)
-
-
-@app.post("/costs/waste", include_in_schema=False)
-def log_waste(request: Request, supply_id: int = Form(...), quantity: str = Form(...), reason: str = Form(...),
-              note: str = Form("")):
-    me = current_person(request)
-    try:
-        with SessionLocal() as s:
-            w = costs.log_waste(s, me.org_key, supply_id, quantity, reason, me.id, note)
-            name, unit = s.get(kitchen.Supply, supply_id).name, kitchen.unit_label(s.get(kitchen.Supply, supply_id).unit)
-    except ValueError as e:
-        return RedirectResponse("/costs?" + urlencode({"error": str(e)[:200]}) + "#waste-form", status_code=303)
-    start_restocks(me.org_key)                       # throwing stock away can take an item below its level
-    msg = f"Logged {w.quantity:g} {unit} of {name.lower()} as waste ({eur(w.cost)}), and took it off the stock count."
-    return RedirectResponse("/costs?" + urlencode({"logged": msg}), status_code=303)
 
 
 @app.get("/service", include_in_schema=False)

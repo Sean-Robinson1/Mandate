@@ -50,3 +50,11 @@ def test_the_week_adds_waste_on_top_of_recipe_cost(db):
         o = costs.overview(s, "restaurant")
     assert o.net_sales > 0 and 15 < o.pct < 40
     assert o.waste_cost > 0 and o.pct_with_waste == round(100 * (o.recipe_cost + o.waste_cost) / o.net_sales, 1)
+
+
+def test_waste_share_and_weekly_figures():
+    days = [costs.DayCost(d, None, 1000.0, 300.0, w) for d, w in ((1, 40.0), (2, 10.0))]
+    o = costs.Overview(days, [], [], [], [])
+    assert o.waste_pct == round(100 * 50 / 650, 1)                       # of the food bought: dishes sold plus waste
+    assert o.waste_per_week == 175.0                                      # €25 a day
+    assert o.avoidable_per_week == round(7 * (50 - 0.04 * 650) / 2, 2)   # above a well-run kitchen's 4%

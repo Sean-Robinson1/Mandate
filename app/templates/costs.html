@@ -2,30 +2,85 @@
 {% block title %}Food cost · Trusted Trade{% endblock %}
 {% block content %}
 {% set lo, hi = (o.target[0] * 100)|round|int, (o.target[1] * 100)|round|int %}
+{% set good = (o.good_waste * 100)|round|int %}
 <div class="eyebrow">{{ my_org.buyer_org }} · {{ me.name }}, {{ me.role|lower }}</div>
-<div class="page-head"><h1>Food cost</h1><a class="btn secondary" href="#waste-form">Log waste</a></div>
-<p class="lede">What the ingredients cost against what the kitchen sells, over the last 7 days, and what was thrown
-  away. A healthy food cost is {{ lo }}–{{ hi }}% of sales before VAT.</p>
-{% if notice %}<div class="notice {{ notice.tone }}" role="status">{{ notice.text }}</div>{% endif %}
+<div class="page-head"><h1>Food cost and waste</h1></div>
+<p class="lede">What the ingredients cost against what the kitchen sells over the last {{ period }} days, and what was
+  thrown away and why. A healthy food cost is {{ lo }}–{{ hi }}% of sales before VAT; a well-run kitchen throws away
+  under {{ good }}% of the food it buys.</p>
 
 {% if not o.days %}
 <div class="empty-card first"><strong>No sales yet.</strong>
   <p class="small muted">Press <strong>Next day</strong> on <a href="/">Supplies</a> to run a day's service; food cost
     and waste appear here after it.</p></div>
 {% else %}
+{% set wtone = "bad" if o.waste_pct > good + 2 else "warn" if o.waste_pct > good else "ok" %}
 <div class="kpis first">
+  <div class="tile {{ wtone }}"><div class="tile-label">Thrown away</div>
+    <div class="tile-value">{{ o.waste_pct }}%</div><div class="tile-sub">of the food bought: {{ o.waste_cost|eur0 }} in {{ o.days|length }} days (aim: under {{ good }}%)</div></div>
+  <div class="tile {{ wtone }}"><div class="tile-label">Waste costs you</div>
+    <div class="tile-value">{{ o.waste_per_week|eur0 }}<span class="tile-unit"> a week</span></div>
+    <div class="tile-sub">about {{ (o.waste_per_week * 52)|eur0 }} a year{% if o.avoidable_per_week %}; {{ o.avoidable_per_week|eur0 }} a week more than a well-run kitchen{% endif %}</div></div>
   <div class="tile {{ o.tone(o.pct) }}"><div class="tile-label">Food cost from recipes</div>
-    <div class="tile-value">{{ o.pct }}%</div><div class="tile-sub">{{ o.recipe_cost|eur0 }} of ingredients in the dishes sold</div></div>
-  <div class="tile {{ o.tone(o.pct_with_waste) }}"><div class="tile-label">Including waste</div>
-    <div class="tile-value">{{ o.pct_with_waste }}%</div><div class="tile-sub">{{ (o.pct_with_waste - o.pct)|round(1) }} points from waste</div></div>
-  <div class="tile {{ 'warn' if o.waste_cost > 0.04 * o.recipe_cost }}"><div class="tile-label">Thrown away</div>
-    <div class="tile-value">{{ o.waste_cost|eur0 }}</div><div class="tile-sub">{{ (100 * o.waste_cost / o.recipe_cost)|round(1) if o.recipe_cost else 0 }}% of ingredient spend</div></div>
-  <div class="tile"><div class="tile-label">Sales before VAT</div>
-    <div class="tile-value">{{ o.net_sales|eur0 }}</div><div class="tile-sub">{{ o.days|length }} day{{ "s" if o.days|length != 1 }} of service</div></div>
+    <div class="tile-value">{{ o.pct }}%</div><div class="tile-sub">{{ o.recipe_cost|eur0 }} of ingredients in {{ o.net_sales|eur0 }} of sales</div></div>
+  <div class="tile {{ o.tone(o.pct_with_waste) }}"><div class="tile-label">Food cost including waste</div>
+    <div class="tile-value">{{ o.pct_with_waste }}%</div><div class="tile-sub">{{ (o.pct_with_waste - o.pct)|round(1) }} points of sales lost to waste</div></div>
 </div>
 
+<section class="card gap-top" aria-labelledby="h-waste">
+  <div class="card-head"><h2 id="h-waste">Where the waste comes from</h2>
+    <a class="small" href="#waste-log">Every entry ↓</a></div>
+  {% if o.findings %}
+  <ul class="findings">{% for f in o.findings %}<li>{{ f }}</li>{% endfor %}</ul>
+  {% endif %}
+
+  {% set c = o.waste_chart() %}
+  <div class="chart-key small muted" aria-hidden="true"><span class="key-quiet"></span> quiet day
+    <span class="key-busy"></span> busier day <span class="key-good"></span> a well-run kitchen ({{ c.good_value|eur0 }} a day)</div>
+  <div class="chart wc">
+    <svg viewBox="0 0 {{ c.W }} {{ c.H }}" role="img" aria-label="Waste each day, in euros. The table below lists every entry.">
+      {% for t in c.ticks %}<line class="grid" x1="{{ c.L }}" x2="{{ c.W }}" y1="{{ t.y }}" y2="{{ t.y }}"/>
+      <text class="axis" x="{{ c.L - 8 }}" y="{{ t.y + 4 }}" text-anchor="end">€{{ t.v|round|int }}</text>{% endfor %}
+      {% for b in c.bars %}
+      <g class="wc-bar{{ ' quiet' if b.d.quiet }}"><title>{{ b.d.on|on }}: {{ b.d.waste|eur }} thrown away{% if b.d.why %}. Biggest: {{ b.d.why }}{% endif %}</title>
+        <rect class="hit" x="{{ b.mid - b.w }}" y="0" width="{{ 2 * b.w }}" height="{{ c.base }}"/>
+        {% if b.h > 0 %}<rect class="mark" x="{{ b.x }}" y="{{ b.y }}" width="{{ b.w }}" height="{{ b.h }}" rx="3"/>{% endif %}
+        {% if b.d.waste > 2 * o.waste_cost / o.days|length %}<text class="axis strong" x="{{ b.mid }}" y="{{ b.y - 5 }}" text-anchor="middle">{{ b.d.waste|eur0 }}</text>{% endif %}
+        <text class="axis" x="{{ b.mid }}" y="{{ c.H - 6 }}" text-anchor="middle">{{ b.d.on.strftime('%a') }} {{ b.d.on.day }}</text>
+      </g>{% endfor %}
+      <line class="wc-good" x1="{{ c.L }}" x2="{{ c.W }}" y1="{{ c.good }}" y2="{{ c.good }}"/>
+    </svg>
+  </div>
+
+  <div class="work tight-top">
+    <div>
+      <h3 class="sub-head">What is thrown away</h3>
+      <div class="table-scroll"><table class="tight">
+        <thead><tr><th>Item</th><th class="num">Cost</th><th class="num">Of its use</th><th>Mostly</th></tr></thead>
+        <tbody>{% for i in o.items %}
+          <tr><td><a class="item-link" href="/supplies/{{ i.supply.id }}">{{ i.supply.name }}</a>
+              {% if i.dishes %}<span class="sub">In {{ i.dishes[:3]|join(", ") }}{% if i.dishes|length > 3 %} +{{ i.dishes|length - 3 }}{% endif %}</span>{% endif %}</td>
+            <td class="num">{{ i.cost|eur0 }}</td>
+            <td class="num">{% if i.rate is not none %}<span class="chip {{ 'bad' if i.rate > 10 else 'warn' if i.rate > good }}">{{ i.rate }}%</span>{% else %}–{% endif %}</td>
+            <td class="small">{{ i.reason }}</td></tr>
+        {% endfor %}</tbody>
+      </table></div>
+    </div>
+    <div>
+      <h3 class="sub-head">Why it is thrown away</h3>
+      {% for name, cost, n in o.by_reason %}
+      <div class="spend-row">
+        <div class="spend-label"><span>{{ name }}</span>
+          <span>{{ cost|eur0 }} <span class="muted">· {{ (100 * cost / o.waste_cost)|round|int }}% · {{ n }} time{{ "s" if n != 1 }}</span></span></div>
+        <div class="level waste"><i style="width: {{ 100 * cost / o.waste_cost }}%"></i></div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
 <section class="card gap-top" aria-labelledby="h-days">
-  <div class="card-head"><h2 id="h-days">Day by day</h2>
+  <div class="card-head"><h2 id="h-days">Food cost day by day</h2>
     <span class="small muted"><span class="key-band"></span> target {{ lo }}–{{ hi }}% · <span class="key-bar"></span> recipes · <span class="key-waste"></span> waste</span></div>
   {% set scale = 50 %}
   <div class="fc-days" role="table" aria-label="Food cost by day">
@@ -71,24 +126,11 @@
 </div>
 {% endif %}
 
-<section class="card gap-top" aria-labelledby="h-waste" id="waste">
-  <div class="card-head"><h2 id="h-waste">Waste</h2>
-    <span class="small muted">{% for name, cost, n in o.by_reason %}{{ name }} {{ cost|eur0 }}{{ " · " if not loop.last }}{% else %}Nothing logged in the last 7 days{% endfor %}</span></div>
-  <form method="post" action="/costs/waste" class="waste-form" id="waste-form">
-    <label class="wf-item"><span class="field-label small">Item</span>
-      <select name="supply_id" required>
-        {% for s in o.supplies %}<option value="{{ s.id }}">{{ s.name }} ({{ s.on_hand|qty }} {{ s.unit|unit }} in stock)</option>{% endfor %}
-      </select></label>
-    <label class="wf-qty"><span class="field-label small">How much</span>
-      <input name="quantity" inputmode="decimal" required placeholder="e.g. 1.5"></label>
-    <label class="wf-reason"><span class="field-label small">Why</span>
-      <select name="reason" required>{% for k, v in reasons.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select></label>
-    <label class="wf-note"><span class="field-label small">Note (optional)</span>
-      <input name="note" maxlength="200" placeholder="e.g. fridge 2 too warm overnight"></label>
-    <button class="btn">Log waste</button>
-  </form>
-  <p class="small muted">Logged waste comes out of stock straight away, at today's price. The closing check after each
-    service bins anything past its use-by date.</p>
+<section class="card gap-top" aria-labelledby="h-log" id="waste-log">
+  <div class="card-head"><h2 id="h-log">Waste log</h2>
+    <span class="small muted">{% if not o.waste %}Nothing logged in the last {{ period }} days{% else %}Latest {{ o.waste|length }} entries{% endif %}</span></div>
+  <p class="small muted">Recorded by the crew on the kitchen's waste log and by the closing check after each service;
+    this page reads it. Waste leaves stock when it is recorded and is costed at that day's price.</p>
   {% if o.waste %}
   <div class="table-scroll gap-top-s"><table class="tight">
     <thead><tr><th>Day</th><th>Item</th><th class="num">Amount</th><th class="num">Cost</th><th>Why</th><th>Logged by</th></tr></thead>
@@ -101,10 +143,4 @@
   </table></div>
   {% endif %}
 </section>
-{% endblock %}
-{% block script %}
-<script>
-  if (location.search) history.replaceState(null, "", "/costs" + location.hash);
-  document.getElementById("waste-form").addEventListener("submit", e => { const b = e.target.querySelector("button"); b.disabled = true; });
-</script>
 {% endblock %}
