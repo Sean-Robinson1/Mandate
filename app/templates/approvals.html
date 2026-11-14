@@ -8,13 +8,16 @@
   {% if rows %}
   <div class="table-scroll">
   <table>
-    <thead><tr><th>Request</th><th>Why it needs a person</th><th class="num">Total</th><th>Approver</th><th></th></tr></thead>
+    <thead><tr><th>Order</th><th class="num">Total</th><th>Price</th><th>Why it needs a person</th><th>Approver</th><th></th></tr></thead>
     <tbody>
-    {% for r in rows %}
+    {% for r in rows %}{% set b = briefs[r.trace_id] %}
       <tr>
-        <td>{{ r.request_text|truncate(60) }}<span class="sub">{{ r.buyer_org }} · {{ r.created_at|when("%d %b, %H:%M") }}</span></td>
-        <td class="small">{% for m in reasons[r.trace_id] %}{{ m }}{% if not loop.last %}<br>{% endif %}{% endfor %}</td>
+        <td>{% if b %}<strong>{{ b.quantity|qty }} {{ b.unit }} {{ b.supply.name|lower if b.supply else b.product|truncate(40) }}</strong>
+            <span class="sub">{% if b.delivery %}Arrives {{ b.delivery|on }} · {% endif %}{{ r.created_at|when("%d %b, %H:%M") }}</span>
+          {% else %}{{ r.request_text|truncate(60) }}<span class="sub">{{ r.created_at|when("%d %b, %H:%M") }}</span>{% endif %}</td>
         <td class="num">{{ r.total_net|eur }}</td>
+        <td class="small">{% if b and b.price %}{{ b.price|eur }}/{{ b.unit }}<span class="sub">{% if b.price_tone %}<span class="{{ b.price_tone }}-text">{{ b.price_words }}</span>{% else %}{{ b.price_words }}{% endif %}</span>{% else %}–{% endif %}</td>
+        <td class="small">{% for m in reasons[r.trace_id] %}{{ m }}{% if not loop.last %}<br>{% endif %}{% endfor %}</td>
         <td class="small nowrap">{{ approvers.get(r.trace_id, "–") }}</td>
         <td class="num"><a class="btn {{ '' if can_approve else 'secondary' }}" href="/requests/{{ r.trace_id }}">{{ "Review" if can_approve else "View" }}</a></td>
       </tr>

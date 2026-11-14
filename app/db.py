@@ -156,6 +156,23 @@ class Sale(Base):
     served: Mapped[int] = mapped_column(Integer, default=1)
 
 
+class Waste(Base):
+    """Stock thrown away: how much, why, what it cost, and who logged it."""
+
+    __tablename__ = "waste"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    org_key: Mapped[str] = mapped_column(String(20), index=True)
+    supply_id: Mapped[int] = mapped_column(Integer, index=True)
+    day: Mapped[int] = mapped_column(Integer, index=True)
+    quantity: Mapped[float] = mapped_column(Float)                    # in the supply's unit
+    cost: Mapped[float] = mapped_column(Float, default=0.0)           # € before VAT, at the price of the day
+    reason: Mapped[str] = mapped_column(String(20))                   # see costs.REASONS
+    note: Mapped[str] = mapped_column(String(200), default="")
+    by: Mapped[str] = mapped_column(String(80), default="")           # person id, or "closing check"
+    at: Mapped[str] = mapped_column(String(40), default="")
+
+
 class SimState(Base):
     """The demo's calendar: day 1 is `start`, and the 'next day' button moves it on."""
 

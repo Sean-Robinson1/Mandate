@@ -10,6 +10,11 @@
 {% if run.trigger %}<p class="trigger"><span class="lane-tag buyer">Low stock</span>{{ run.trigger }}. <a href="/">Supplies</a></p>{% endif %}
 <h1>“{{ run.request_text }}”</h1>
 
+{% if run.status == "NEEDS_HUMAN" and brief %}
+{% include "_decision.html" %}
+<div class="section-head tech-head"><h2>Technical details</h2>
+  <span class="muted small">The messages with Valio Aimo, the exact order lines, the rule checks and the audit trail</span></div>
+{% else %}
 <div class="verdict {{ tone }}" id="verdict" data-status="{{ run.status }}">
   {% if working %}
     <p class="verdict-title"><span class="spinner" aria-hidden="true"></span>{{ label }}</p>
@@ -102,6 +107,7 @@
     {% endif %}
   {% endif %}
 </div>
+{% endif %}
 
 <section>
   <div class="section-head"><h2>How it happened</h2><span class="muted small">Every message between the agent and Valio Aimo</span></div>

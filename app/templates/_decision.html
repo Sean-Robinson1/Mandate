@@ -1,0 +1,76 @@
+{# The approver's view of an order the agent may not place alone: the decision first, the evidence after. #}
+{% set b = brief %}
+{% set item = b.supply.name|lower if b.supply else b.product %}
+<div class="decide" id="verdict" data-status="{{ run.status }}">
+  <div class="decide-head">
+    <p class="decide-kicker"><span class="dot warn"></span>Waiting for {{ approver }} · nothing has been ordered yet</p>
+    <h2 class="decide-title">Order {{ b.quantity|qty }} {{ b.unit }} of {{ item }} for {{ b.total|eur }}?</h2>
+    <p class="decide-sub">{{ b.product }} from Valio Aimo · {{ b.total_with_tax|eur }} with VAT</p>
+  </div>
+
+  <div class="decide-why">
+    <h3>Why the agent is asking you</h3>
+    {% if reopened %}<p class="small">An earlier approval was not applied because something changed after it was sent. The reasons now are:</p>{% endif %}
+    <ul>{% for f in fired %}<li>{{ f.message }}</li>{% else %}<li>The purchasing rules ask for a person to check this order.</li>{% endfor %}</ul>
+  </div>
+
+  <div class="decide-facts">
+    <div class="fact">
+      <div class="fact-label">Price</div>
+      <div class="fact-value">{{ b.price|eur }}<span class="fact-unit">/{{ b.unit }}</span></div>
+      <div class="fact-sub">{% if b.price_tone %}<span class="chip {{ b.price_tone }}">{{ b.price_words }}</span>{% else %}{{ b.price_words }}{% endif %}</div>
+      {% if b.usual %}<div class="fact-sub">You usually pay {{ b.usual|eur }}/{{ b.unit }} ({{ b.usual_from }})</div>{% endif %}
+    </div>
+    <div class="fact">
+      <div class="fact-label">Arrives</div>
+      <div class="fact-value">{{ b.delivery|on if b.delivery else "–" }}</div>
+      <div class="fact-sub">{% if b.on_time is none %}No deadline given{% elif b.on_time %}
+        {%- set spare = (b.deadline - b.delivery).days %}{{ "On the day you need it" if spare == 0 else (spare ~ " day" ~ ("s" if spare != 1 else "") ~ " before you need it") }}, {{ b.deadline|on }}
+        {%- else %}<span class="chip bad">After you need it, {{ b.deadline|on }}</span>{% endif %}</div>
+    </div>
+    <div class="fact">
+      <div class="fact-label">In stock now</div>
+      {% if b.on_hand is not none %}
+      <div class="fact-value">{{ b.on_hand|qty }}<span class="fact-unit"> {{ b.unit }}</span></div>
+      <div class="fact-sub">{% if b.runs_out %}Runs out {{ b.runs_out|on }}{% elif b.lasts_days is not none %}Lasts about {{ b.lasts_days }} day{{ "s" if b.lasts_days != 1 }}{% endif %}
+        {%- if b.weeks_of_use %} · this order is about {{ b.weeks_of_use|qty }} week{{ "s" if b.weeks_of_use != 1 }} of use{% endif %}</div>
+      {% else %}
+      <div class="fact-value">–</div><div class="fact-sub">Not a tracked stock item</div>
+      {% endif %}
+    </div>
+    <div class="fact">
+      <div class="fact-label">Spent this week</div>
+      {% if b.week_spent is not none %}
+      <div class="fact-value">{{ b.week_spent|eur0 }}</div>
+      <div class="fact-sub">{{ b.week_after|eur0 }} with this order. The agent may spend {{ b.week_limit|eur0 }} a week and
+        {{ b.order_limit|eur0 }} an order on its own.</div>
+      {% else %}<div class="fact-value">–</div>{% endif %}
+    </div>
+  </div>
+
+  <dl class="decide-more">
+    {% if b.dishes %}<div><dt>Used in</dt><dd>{{ b.dishes|join(", ") }}</dd></div>{% endif %}
+    {% if run.trigger %}<div><dt>Why it was ordered</dt><dd>{{ run.trigger }}</dd></div>{% elif run.requested_by %}<div><dt>Asked for by</dt><dd>{{ run.requested_by|person }}: “{{ run.request_text }}”</dd></div>{% endif %}
+    {% if plan.shortfall %}<div><dt>Not covered</dt><dd>{{ plan.shortfall|qty }} {{ b.unit }} could not be found in time</dd></div>{% endif %}
+    <div><dt>If you decline</dt><dd>{{ b.if_declined }}</dd></div>
+  </dl>
+
+  {% if me.id == mandate.approver %}
+  <form method="post" action="/requests/{{ run.trace_id }}/decision" class="decide-actions" id="decide-form">
+    <button class="btn big" name="action" value="approve">Approve and order {{ b.total|eur }}</button>
+    <button class="btn secondary" name="action" value="decline">Decline</button>
+    <input type="text" name="note" id="decision-note" placeholder="Note for the record (optional)" aria-label="Note for the record" enterkeyhint="done">
+  </form>
+  <p class="small muted gap-top-s">Your decision is signed with your own key, and Valio Aimo checks that signature before it accepts the order.</p>
+  <details class="revise" {% if reopened %}open{% endif %}>
+    <summary>Change the amount or product and send it back to the agent</summary>
+    <form method="post" action="/requests/{{ run.trace_id }}/revise" class="stack revise-form" id="revise-form">
+      <label for="revise-text" class="small muted">Edit the request: the amount, the brand or the delivery day. The agent plans it again and checks it against the purchasing rules; nothing is ordered until it passes.</label>
+      <textarea id="revise-text" name="text" required>{{ run.request_text }}</textarea>
+      <div><button class="btn secondary">Send back to the agent</button></div>
+    </form>
+  </details>
+  {% else %}
+  <p class="notice">Only {{ approver }} can decide this. To try it, sign in as {{ approver }} in the sidebar.</p>
+  {% endif %}
+</div>

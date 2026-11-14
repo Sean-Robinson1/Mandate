@@ -15,10 +15,10 @@
   <div class="head-actions">
     {% if days|length > 1 %}
     <nav class="day-pick" aria-label="Other days">
-      {% for d in days[:7] %}<a href="/service?day={{ d }}" {% if d == day %}aria-current="page"{% endif %}>Day {{ d }}</a>{% endfor %}
+      {% for d in days[:7]|reverse %}<a href="/service?day={{ d }}" {% if d == day %}aria-current="page"{% endif %}>{{ day_on(d).strftime("%a") }} {{ day_on(d).day }}</a>{% endfor %}
     </nav>
     {% endif %}
-    {% if is_today %}<form method="post" action="/kitchen/next-day" id="day-form"><button class="btn secondary" id="day-btn">Next day</button></form>{% endif %}
+    <form method="post" action="/kitchen/next-day" id="day-form"><button class="btn secondary" id="day-btn" title="Demo: run the next day's service">Next day</button></form>
   </div>
 </div>
 <p class="lede">Every ticket from the till, with each dish's recipe taken out of stock as it is made. A dish

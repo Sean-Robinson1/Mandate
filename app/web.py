@@ -23,7 +23,7 @@ from sqlalchemy import func, select
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 import settings as config
-from app import agent, charts, keys, kitchen, menu, policy, prices, rules
+from app import agent, charts, costs, keys, kitchen, menu, policy, prices, review, rules
 from app.audit import AuditEvent, append_event, event_to_dict, events_for_trace, lock_chain, verify_chain
 from app.db import Order, Run, Sale, SessionLocal, StockLevel, Step, init_db, wipe
 from app.gateway_client import GatewayClient, GatewayError
@@ -186,8 +186,14 @@ templates.env.filters.update(eur=eur, qty=qty, when=when, day=day, claim=claim_l
 templates.env.globals.update(
     STOPPED=kitchen.STOPPED, kitchen_short=kitchen.short_name, lead=kitchen.lead_days,
     supplier_contact=lambda name: kitchen.SUPPLIERS.get(name, {}).get("contact", ""))
+def day_on(day_number: int) -> date:
+    """The calendar date of a kitchen day."""
+    with SessionLocal() as s:
+        return kitchen.date_of(kitchen.calendar(s)[1], day_number)
+
+
 templates.env.globals.update(STATUS=STATUS, ALLERGEN_NAMES=ALLERGEN_NAMES, PEOPLE=PEOPLE, reader=agent.reader_name,
-                             has_menu=menu.has_menu)
+                             has_menu=menu.has_menu, day_on=day_on)
 
 
 # ---------------------------------------------------------------- who is using the console
@@ -632,6 +638,33 @@ def menu_page(request: Request):
                 week_pct=round(100 * cost / net, 1) if net else None, target=menu.FOOD_COST_TARGET, vat=menu.VAT)
 
 
+@app.get("/costs", include_in_schema=False)
+def costs_page(request: Request, logged: str = "", error: str = ""):
+    me = current_person(request)
+    if not menu.has_menu(me.org_key):
+        raise HTTPException(404, "this kitchen has no menu")
+    with SessionLocal() as s:
+        o = costs.overview(s, me.org_key)
+    notice = {"tone": "bad", "text": error} if error else {"tone": "ok", "text": logged} if logged else None
+    return page(request, "costs.html", active="costs", o=o, reasons=costs.REASONS, notice=notice,
+                closing=costs.CLOSING)
+
+
+@app.post("/costs/waste", include_in_schema=False)
+def log_waste(request: Request, supply_id: int = Form(...), quantity: str = Form(...), reason: str = Form(...),
+              note: str = Form("")):
+    me = current_person(request)
+    try:
+        with SessionLocal() as s:
+            w = costs.log_waste(s, me.org_key, supply_id, quantity, reason, me.id, note)
+            name, unit = s.get(kitchen.Supply, supply_id).name, kitchen.unit_label(s.get(kitchen.Supply, supply_id).unit)
+    except ValueError as e:
+        return RedirectResponse("/costs?" + urlencode({"error": str(e)[:200]}) + "#waste-form", status_code=303)
+    start_restocks(me.org_key)                       # throwing stock away can take an item below its level
+    msg = f"Logged {w.quantity:g} {unit} of {name.lower()} as waste ({eur(w.cost)}), and took it off the stock count."
+    return RedirectResponse("/costs?" + urlencode({"logged": msg}), status_code=303)
+
+
 @app.get("/service", include_in_schema=False)
 def service_page(request: Request, day: int | None = None, play: int = 0, started: int = 0):
     me = current_person(request)
@@ -639,12 +672,13 @@ def service_page(request: Request, day: int | None = None, play: int = 0, starte
         raise HTTPException(404, "this kitchen has no menu")
     with SessionLocal() as s:
         today_day, start = kitchen.calendar(s)
-        day = day or menu.last_service_day(s, me.org_key)
-        summary = menu.day_summary(s, me.org_key, day) if day else None
+        if day is None:                                   # day 0 and earlier are the seeded history
+            day = menu.last_service_day(s, me.org_key)
+        summary = menu.day_summary(s, me.org_key, day) if day is not None else None
         rows = kitchen.sheet(s, me.org_key, agent.approver_name(MANDATES[me.org_key]))
         views = menu.dishes(s, me.org_key)
         levels = {l.supply_id: l for l in s.scalars(select(StockLevel).where(
-            StockLevel.supply_id.in_([r.supply.id for r in rows]), StockLevel.day == day))} if day else {}
+            StockLevel.supply_id.in_([r.supply.id for r in rows]), StockLevel.day == day))} if day is not None else {}
         days = sorted(set(s.scalars(select(Sale.day).where(Sale.org_key == me.org_key))), reverse=True)
         first = kitchen.use_first(s, me.org_key)
     if summary is None:
@@ -736,6 +770,8 @@ def run_detail(request: Request, trace_id: str):
     ctx = _run_context(trace_id)
     with SessionLocal() as s:
         ctx["retry_blocker"] = agent.retry_blocker(s, ctx["run"]) if ctx["run"].status in agent.NOT_ORDERED else None
+        ctx["brief"] = review.brief(s, ctx["run"], ctx["plan"], ctx["intent"], ctx["mandate"]) \
+            if ctx["run"].status == "NEEDS_HUMAN" else None
     return page(request, "run.html", **ctx,
                 active="approvals" if ctx["run"].status == "NEEDS_HUMAN" else "activity")
 
@@ -873,10 +909,13 @@ def approvals(request: Request):
     with SessionLocal() as s:
         rows = s.scalars(select(Run).where(Run.status == "NEEDS_HUMAN", Run.mandate_id == my_mandate_id(me))
                          .order_by(Run.created_at.desc())).all()
+        briefs = {r.trace_id: review.brief(s, r, json.loads(r.plan_json) if r.plan_json else None,
+                                           json.loads(r.intent_json) if r.intent_json else None,
+                                           MANDATE_BY_ID.get(r.mandate_id)) for r in rows}
     reasons = {r.trace_id: [x["message"] for x in json.loads(r.policy_json)["reasons"]] for r in rows}
     approvers = {r.trace_id: MANDATE_BY_ID[r.mandate_id].approver_name for r in rows if r.mandate_id in MANDATE_BY_ID}
     return page(request, "approvals.html", rows=rows, reasons=reasons, approvers=approvers, active="approvals",
-                can_approve=is_manager(me))
+                can_approve=is_manager(me), briefs=briefs)
 
 
 @app.get("/activity", include_in_schema=False)

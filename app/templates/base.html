@@ -18,6 +18,7 @@
       {% if has_menu(me.org_key) %}
       <a href="/menu" {% if active == "menu" %}aria-current="page"{% endif %}>Menu</a>
       <a href="/service" {% if active == "service" %}aria-current="page"{% endif %}>Service</a>
+      <a href="/costs" {% if active == "costs" %}aria-current="page"{% endif %}>Food cost</a>
       {% endif %}
       <a href="/approvals" {% if active == "approvals" %}aria-current="page"{% endif %}>Approvals
         {% if pending %}<span class="count">{{ pending }}</span>{% endif %}</a>

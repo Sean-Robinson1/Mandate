@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 import random
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -297,6 +297,16 @@ def serve(session: Session, org_key: str, day: int, on: date, week_share: float,
                                  cost=v.cost))
         tickets.append(t)
     return {k: round(v, 3) for k, v in used.items()}
+
+
+def seed_history(session: Session, org_key: str, days: range, week: tuple, start: date) -> None:
+    """Past services for a new demo, so the menu, service and food cost pages have a history from day one.
+    Sales only: the seeded stock history already accounts for the stock. shortcut: simulated (ASSUMPTIONS.md)."""
+    plenty = {s.id: 1e9 for s in session.scalars(select(Supply).where(Supply.org_key == org_key))}
+    for day in days:
+        on = start + timedelta(days=day - 1)
+        serve(session, org_key, day, on, week[on.weekday()], plenty)
+    session.commit()
 
 
 @dataclass

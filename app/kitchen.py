@@ -184,6 +184,26 @@ def seed(session: Session, start: date | None = None) -> None:
     prices.seed_history(session)
     session.commit()
     menu.seed(session)
+    _seed_service_history(session)
+
+
+SERVICE_HISTORY_DAYS = 14
+
+
+def _seed_service_history(session: Session) -> None:
+    """Two weeks of past services and waste for each kitchen with a menu and no sales yet."""
+    from app import costs                                    # here, not at the top: costs imports kitchen
+    from app.db import Sale
+    from app.mandates import PEOPLE
+    day, start = calendar(session)
+    for org in menu.MENUS:
+        if session.scalar(select(Sale.id).where(Sale.org_key == org).limit(1)) is not None:
+            continue
+        if session.scalar(select(Supply.id).where(Supply.org_key == org).limit(1)) is None:
+            continue
+        days = range(day - SERVICE_HISTORY_DAYS, day)
+        menu.seed_history(session, org, days, WEEK.get(org, FLAT), start)
+        costs.seed_history(session, org, days, [p.id for p in PEOPLE.values() if p.org_key == org] or [costs.CLOSING])
 
 
 def _seed_history(session: Session, s: Supply, start: date, today_day: int = 1) -> None:
@@ -647,6 +667,9 @@ def next_day(session: Session) -> int:
         session.add(StockLevel(supply_id=supply.id, day=day, on_hand=supply.on_hand, used=round(used, 2),
                                received=round(got, 2), source="day"))
     session.commit()
+    from app import costs                                    # here, not at the top: costs imports kitchen
+    for org in {s.org_key for s in supplies if menu.has_menu(s.org_key)}:
+        costs.close_day(session, org, day)
     for org in STANDING_ORDERS:
         standing_orders(session, org)
     return day

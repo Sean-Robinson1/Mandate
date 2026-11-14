@@ -54,6 +54,14 @@ Each entry: what we assumed, why, and what would replace it in production.
     price Valio Aimo confirmed. Oil, seasoning and garnish are a fixed amount per dish, not tracked as stock.
     Food cost is measured against the price before VAT, taken as 13.5% for restaurant food. Allergens per dish
     come from the kitchen's declaration for each item, plus Valio Aimo's product data for what it delivered.
+10l. **The restaurant starts with two weeks of past services and waste**, simulated the same way as a live day,
+    so the menu, service and food cost pages have a history on day one. They add sales and waste records only;
+    the seeded stock history is unchanged. After each live service a closing check bins stock past its use-by
+    date and logs a little over-prepared food (2–5% of one or two items' use). Production: the till's sales export
+    and the kitchen's own waste log.
+10m. **Waste is costed at the item's current price** (Valio Aimo's confirmed price once the agent has bought it,
+    else the list price) and leaves stock at once. Food cost is shown from recipes, and with logged waste added;
+    the gap nobody logged (recipes against stock counts) is not calculated yet.
 10k. **The restaurant's other suppliers deliver on standing orders**: when an item the agent does not order runs
     low and nothing is on the way, an order for the suggested quantity is recorded, due after the supplier's lead
     time. The morning's deliveries are taken in before service. Production: the chef's own orders, or a supplier
